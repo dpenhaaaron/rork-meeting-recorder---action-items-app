@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { RecordingProvider } from "@/hooks/recording-store";
 import { AuthProvider } from "@/hooks/auth-store";
+import { trpc, trpcClient } from "@/lib/trpc";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,14 +39,16 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RecordingProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <RootLayoutNav />
-          </GestureHandlerRootView>
-        </RecordingProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RecordingProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <RootLayoutNav />
+            </GestureHandlerRootView>
+          </RecordingProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }
