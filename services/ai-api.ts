@@ -1,13 +1,10 @@
 import { MeetingArtifacts, EmailDraft } from '@/types/meeting';
 
 const AI_BASE_URL = 'https://toolkit.rork.com';
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 3000; // 3 seconds base backoff for better stability
-const CHUNK_DURATION = 60; // seconds per chunk (removed chunking by time)
-const CHUNK_OVERLAP = 5; // 5 seconds overlap
-const MAX_CHUNK_TOKENS = 1000; // increased chunk tokens
-const MAX_TRANSCRIPT_LENGTH = 8000; // higher ceiling before chunking
-const CHUNK_SIZE_LIMIT = 2000; // larger chunks for fewer API calls
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 2000;
+const MAX_TRANSCRIPT_LENGTH = 12000; // Process most meetings directly
+const CHUNK_SIZE_LIMIT = 3000; // Larger chunks for efficiency
 
 export interface TranscribeRequest {
   audio: File | { uri: string; name: string; type: string };
@@ -93,232 +90,60 @@ const retryWithBackoff = async <T>(
   }
 };
 
-// Audio chunking utilities
-const createAudioChunks = async (
-  audioFile: File | { uri: string; name: string; type: string },
-  duration: number
-): Promise<AudioChunk[]> => {
-  const chunks: AudioChunk[] = [];
-  const totalChunks = Math.ceil(duration / CHUNK_DURATION);
-  
-  for (let i = 0; i < totalChunks; i++) {
-    const startTime = Math.max(0, i * CHUNK_DURATION - (i > 0 ? CHUNK_OVERLAP : 0));
-    const endTime = Math.min(duration, (i + 1) * CHUNK_DURATION);
-    
-    chunks.push({
-      id: `chunk_${i}`,
-      startTime,
-      endTime,
-      processed: false
-    });
+// Helper function to extract JSON from markdown code blocks
+const extractJSONFromResponse = (text: string): string => {
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) {
+    return jsonMatch[1].trim();
+  }
+  return text.trim();
+};
+
+// Helper function to validate and clean transcript
+const validateTranscript = (transcript: string): string => {
+  if (!transcript || typeof transcript !== 'string') {
+    throw new Error('Invalid transcript: must be a non-empty string');
   }
   
-  return chunks;
-};
-
-// Chunk-level processing (Map phase)
-const processChunk = async (
-  transcript: string,
-  meetingContext: string,
-  chunkId: string
-): Promise<ChunkSummary> => {
-  return retryWithBackoff(async () => {
-    const systemPrompt = `Extract facts from this transcript chunk. Output strict JSON only.
-Schema: {
-  "chunk_summary": "<≤150 words>",
-  "action_items": [{
-    "title": "string",
-    "assignee": "string",
-    "assignee_email": null,
-    "due_date": null,
-    "priority": "Medium",
-    "status": "Not Started",
-    "source_quote": "string",
-    "confidence": 0.8,
-    "tags": []
-  }],
-  "decisions": [{
-    "statement": "string",
-    "source_quote": "string",
-    "confidence": 0.8,
-    "tags": []
-  }],
-  "open_questions": [{
-    "question": "string",
-    "owner": null,
-    "needed_by": null,
-    "source_quote": "string"
-  }]
-}
-Rules: Only explicit commitments. If uncertain, lower confidence. JSON only.`;
-
-    const response = await fetch(`${AI_BASE_URL}/text/llm/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `${meetingContext}\n\nChunk transcript:\n${transcript}` },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Chunk processing failed (${response.status})`);
-    }
-    
-    const result = await response.json();
-    const cleanedResponse = extractJSONFromResponse(result.completion);
-    const parsed = JSON.parse(cleanedResponse);
-    
-    return {
-      id: chunkId,
-      summary: parsed.chunk_summary || '',
-      actionItems: Array.isArray(parsed.action_items) ? parsed.action_items.map((item: any, index: number) => ({
-        ...item,
-        id: `${chunkId}_action_${index}`,
-        title: item.title || 'Untitled Action Item',
-        assignee: item.assignee || 'Unassigned',
-        priority: item.priority || 'Medium',
-        status: item.status || 'Not Started',
-        confidence: typeof item.confidence === 'number' ? item.confidence : 0.8
-      })) : [],
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions.map((item: any, index: number) => ({
-        ...item,
-        id: `${chunkId}_decision_${index}`,
-        statement: item.statement || 'Decision not specified',
-        confidence: typeof item.confidence === 'number' ? item.confidence : 0.8
-      })) : [],
-      questions: Array.isArray(parsed.open_questions) ? parsed.open_questions.map((item: any, index: number) => ({
-        ...item,
-        id: `${chunkId}_question_${index}`,
-        question: item.question || 'Question not specified'
-      })) : [],
-      startTime: 0,
-      endTime: 0
-    };
-  });
-};
-
-// Section-level processing (Reduce phase)
-const reduceSections = async (
-  chunkSummaries: ChunkSummary[],
-  meetingContext: string
-): Promise<SectionSummary[]> => {
-  const sections: SectionSummary[] = [];
-  const chunksPerSection = 3; // Process 3 chunks per section
-  
-  for (let i = 0; i < chunkSummaries.length; i += chunksPerSection) {
-    const sectionChunks = chunkSummaries.slice(i, i + chunksPerSection);
-    
-    const systemPrompt = `Merge and deduplicate chunk summaries. Output strict JSON only.
-Schema: {
-  "section_summary": "<≤250 words>",
-  "action_items": [...],
-  "decisions": [...],
-  "open_questions": [...]
-}
-Rules: Deduplicate by normalized title+assignee. Prefer entries with due dates. JSON only.`;
-    
-    const userPrompt = `Chunk summaries:\n${sectionChunks.map(c => c.summary).join('\n\n')}\n\nAction items:\n${JSON.stringify(sectionChunks.flatMap(c => c.actionItems))}\n\nDecisions:\n${JSON.stringify(sectionChunks.flatMap(c => c.decisions))}\n\nQuestions:\n${JSON.stringify(sectionChunks.flatMap(c => c.questions))}`;
-    
-    const response = await fetch(`${AI_BASE_URL}/text/llm/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn(`Section processing failed, using fallback`);
-      // Fallback: merge without AI processing
-      sections.push({
-        id: `section_${i}`,
-        summary: sectionChunks.map(c => c.summary).join(' '),
-        actionItems: sectionChunks.flatMap(c => c.actionItems),
-        decisions: sectionChunks.flatMap(c => c.decisions),
-        questions: sectionChunks.flatMap(c => c.questions),
-        startTime: sectionChunks[0]?.startTime || 0,
-        endTime: sectionChunks[sectionChunks.length - 1]?.endTime || 0,
-        chunkIds: sectionChunks.map(c => c.id)
-      });
-      continue;
-    }
-    
-    const result = await response.json();
-    const cleanedResponse = extractJSONFromResponse(result.completion);
-    const parsed = JSON.parse(cleanedResponse);
-    
-    sections.push({
-      id: `section_${i}`,
-      summary: parsed.section_summary || sectionChunks.map(c => c.summary).join(' '),
-      actionItems: Array.isArray(parsed.action_items) ? parsed.action_items : sectionChunks.flatMap(c => c.actionItems),
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : sectionChunks.flatMap(c => c.decisions),
-      questions: Array.isArray(parsed.open_questions) ? parsed.open_questions : sectionChunks.flatMap(c => c.questions),
-      startTime: sectionChunks[0]?.startTime || 0,
-      endTime: sectionChunks[sectionChunks.length - 1]?.endTime || 0,
-      chunkIds: sectionChunks.map(c => c.id)
-    });
+  const cleaned = transcript.trim();
+  if (cleaned.length === 0) {
+    throw new Error('Invalid transcript: transcript is empty');
   }
   
-  return sections;
+  if (cleaned.length < 10) {
+    throw new Error('Invalid transcript: transcript is too short (less than 10 characters)');
+  }
+  
+  return cleaned;
 };
 
-// Final refinement (Refine phase)
-const refineFinalArtifacts = async (
-  sections: SectionSummary[],
-  meetingContext: string
-): Promise<MeetingArtifacts> => {
-  return retryWithBackoff(async () => {
-    const systemPrompt = `Produce final meeting artifacts from section summaries. Output strict JSON only.
-Schema: {
-  "summaries": {
-    "executive_120w": "string",
-    "detailed_400w": "string",
-    "bullet_12": ["string"]
-  },
-  "action_items": [...],
-  "decisions": [...],
-  "open_questions": [...]
-}
-Rules: Executive ≤120 words, Detailed ≤400 words, ≤12 bullets. JSON only.`;
+// Helper function to split transcript into logical chunks
+const splitTranscriptIntoChunks = (transcript: string): string[] => {
+  if (transcript.length <= MAX_TRANSCRIPT_LENGTH) {
+    return [transcript];
+  }
+  
+  const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  for (const sentence of sentences) {
+    const trimmedSentence = sentence.trim();
+    if (!trimmedSentence) continue;
     
-    const userPrompt = `Section summaries:\n${sections.map(s => s.summary).join('\n\n')}\n\nMerged action items:\n${JSON.stringify(sections.flatMap(s => s.actionItems))}\n\nMerged decisions:\n${JSON.stringify(sections.flatMap(s => s.decisions))}\n\nMerged questions:\n${JSON.stringify(sections.flatMap(s => s.questions))}`;
-    
-    const response = await fetch(`${AI_BASE_URL}/text/llm/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Final refinement failed (${response.status})`);
+    if (currentChunk.length > 0 && (currentChunk.length + trimmedSentence.length) > CHUNK_SIZE_LIMIT) {
+      chunks.push(currentChunk.trim() + '.');
+      currentChunk = trimmedSentence;
+    } else {
+      currentChunk += (currentChunk ? '. ' : '') + trimmedSentence;
     }
-    
-    const result = await response.json();
-    const cleanedResponse = extractJSONFromResponse(result.completion);
-    const parsed = JSON.parse(cleanedResponse);
-    
-    return {
-      action_items: Array.isArray(parsed.action_items) ? parsed.action_items : sections.flatMap(s => s.actionItems),
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : sections.flatMap(s => s.decisions),
-      open_questions: Array.isArray(parsed.open_questions) ? parsed.open_questions : sections.flatMap(s => s.questions),
-      summaries: {
-        executive_120w: parsed.summaries?.executive_120w || 'Summary not available',
-        detailed_400w: parsed.summaries?.detailed_400w || 'Detailed summary not available',
-        bullet_12: Array.isArray(parsed.summaries?.bullet_12) ? parsed.summaries.bullet_12 : ['Summary not available']
-      }
-    };
-  });
+  }
+  
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim() + '.');
+  }
+  
+  return chunks.filter(chunk => chunk.trim().length > 20);
 };
 
 export const transcribeAudio = async (request: TranscribeRequest): Promise<TranscribeResponse> => {
@@ -593,15 +418,7 @@ Do not wrap the response in markdown code blocks. Return only valid JSON.`;
   });
 };
 
-// Helper function to extract JSON from markdown code blocks
-const extractJSONFromResponse = (text: string): string => {
-  // Remove markdown code blocks if present
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (jsonMatch) {
-    return jsonMatch[1].trim();
-  }
-  return text.trim();
-};
+
 
 const processSummaries = async (transcript: string, meetingContext: string): Promise<any> => {
   return retryWithBackoff(async () => {
@@ -783,7 +600,7 @@ Summary: ${request.artifacts.summaries.executive_120w}`;
   });
 };
 
-// Improved chunked processing for long meetings with better error handling
+// Simplified processing for long meetings
 export const processFullMeetingStreaming = async (
   audioFile: File | { uri: string; name: string; type: string },
   meetingTitle: string,
@@ -792,33 +609,62 @@ export const processFullMeetingStreaming = async (
   onProgress?: ProgressCallback
 ): Promise<{ transcript: string; artifacts: MeetingArtifacts; emailDraft: EmailDraft }> => {
   try {
-    const meetingContext = `Meeting: ${meetingTitle}\nDate: ${new Date().toISOString()}\nAttendees: ${attendees.join(', ')}`;
-    
-    // Step 1: Transcribe full audio with better validation
     onProgress?.({ stage: 'transcribing', progress: 0, message: 'Starting transcription...' });
-    console.log('Starting transcription for streaming processing...');
-    console.log('Audio file info:', audioFile);
+    console.log('Starting transcription for long meeting...');
     
     const transcriptResult = await transcribeAudio({ audio: audioFile });
-    console.log('Transcription completed, length:', transcriptResult.text.length, 'characters');
-    
-    // Validate transcript before proceeding
     const validatedTranscript = validateTranscript(transcriptResult.text);
+    
     onProgress?.({ stage: 'transcribing', progress: 100, message: 'Transcription complete' });
+    console.log('Transcription completed, length:', validatedTranscript.length, 'characters');
     
-    // Step 2: Determine processing strategy based on transcript length
-    const shouldUseChunking = validatedTranscript.length > MAX_TRANSCRIPT_LENGTH;
-    console.log(`Transcript length: ${validatedTranscript.length}, using ${shouldUseChunking ? 'chunked' : 'direct'} processing`);
-    
-    if (!shouldUseChunking) {
-      // Direct processing for shorter transcripts
-      console.log('Using direct processing for short transcript');
-      const artifacts = await processTranscript({
-        transcript: validatedTranscript,
-        attendees,
-        meetingTitle,
-        meetingDate: new Date().toISOString(),
-      }, onProgress);
+    // For very long transcripts, use chunked processing
+    if (validatedTranscript.length > MAX_TRANSCRIPT_LENGTH) {
+      onProgress?.({ stage: 'chunking', progress: 0, message: 'Processing in chunks...' });
+      
+      const chunks = splitTranscriptIntoChunks(validatedTranscript);
+      console.log(`Processing ${chunks.length} chunks`);
+      
+      // Process chunks in parallel for better performance
+      const chunkPromises = chunks.map(async (chunk, index) => {
+        try {
+          await new Promise(resolve => setTimeout(resolve, index * 200)); // Stagger requests
+          return await processTranscript({
+            transcript: chunk,
+            attendees,
+            meetingTitle,
+            meetingDate: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.warn(`Chunk ${index} failed, using fallback`);
+          return {
+            action_items: [],
+            decisions: [],
+            open_questions: [],
+            summaries: {
+              executive_120w: 'Chunk processing failed',
+              detailed_400w: 'Chunk processing failed',
+              bullet_12: ['Chunk processing failed']
+            }
+          };
+        }
+      });
+      
+      const chunkResults = await Promise.all(chunkPromises);
+      
+      // Merge results
+      const artifacts: MeetingArtifacts = {
+        action_items: chunkResults.flatMap(r => r.action_items),
+        decisions: chunkResults.flatMap(r => r.decisions),
+        open_questions: chunkResults.flatMap(r => r.open_questions),
+        summaries: {
+          executive_120w: chunkResults.map(r => r.summaries.executive_120w).join(' ').substring(0, 120),
+          detailed_400w: chunkResults.map(r => r.summaries.detailed_400w).join(' ').substring(0, 400),
+          bullet_12: chunkResults.flatMap(r => r.summaries.bullet_12).slice(0, 12)
+        }
+      };
+      
+      onProgress?.({ stage: 'generating_email', progress: 90, message: 'Generating email draft...' });
       
       const emailDraft = await generateEmailDraft({
         meetingTitle,
@@ -836,172 +682,18 @@ export const processFullMeetingStreaming = async (
       };
     }
     
-    // Step 3: Chunked processing for longer transcripts
-    onProgress?.({ stage: 'chunking', progress: 0, message: 'Creating processing chunks...' });
-    const transcriptChunks = splitTranscriptIntoChunks(validatedTranscript);
-    console.log(`Created ${transcriptChunks.length} chunks for processing`);
+    // Direct processing for shorter transcripts
+    return await processFullMeeting(audioFile, meetingTitle, attendees, onProgress);
     
-    onProgress?.({ stage: 'chunking', progress: 100, message: `Created ${transcriptChunks.length} chunks` });
-    
-    // Step 4: Map phase - Process each chunk with better error handling
-    onProgress?.({ stage: 'mapping', progress: 0, message: 'Processing chunks...', totalChunks: transcriptChunks.length });
-    const chunkSummaries: ChunkSummary[] = [];
-    let successfulChunks = 0;
-    
-    for (let i = 0; i < transcriptChunks.length; i++) {
-      try {
-        onProgress?.({ 
-          stage: 'mapping', 
-          progress: Math.round((i / transcriptChunks.length) * 100), 
-          message: `Processing chunk ${i + 1} of ${transcriptChunks.length}`,
-          currentChunk: i + 1,
-          totalChunks: transcriptChunks.length
-        });
-        
-        const chunkSummary = await processChunk(transcriptChunks[i], meetingContext, `chunk_${i}`);
-        chunkSummaries.push(chunkSummary);
-        successfulChunks++;
-        
-        // Delay between chunks to avoid rate limiting
-        if (i < transcriptChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } catch (error) {
-        console.warn(`Failed to process chunk ${i}, using fallback:`, error);
-        // Create fallback chunk summary with partial content
-        chunkSummaries.push({
-          id: `chunk_${i}`,
-          summary: transcriptChunks[i].substring(0, 200) + '...',
-          actionItems: [],
-          decisions: [],
-          questions: [],
-          startTime: 0,
-          endTime: 0
-        });
-      }
-    }
-    
-    console.log(`Processed ${successfulChunks}/${transcriptChunks.length} chunks successfully`);
-    onProgress?.({ stage: 'mapping', progress: 100, message: 'Chunk processing complete' });
-    
-    // Step 5: Reduce phase - Merge chunks into sections (only if we have multiple chunks)
-    let sections: SectionSummary[];
-    if (chunkSummaries.length > 1) {
-      onProgress?.({ stage: 'reducing', progress: 0, message: 'Merging sections...' });
-      sections = await reduceSections(chunkSummaries, meetingContext);
-      onProgress?.({ stage: 'reducing', progress: 100, message: 'Section merging complete' });
-    } else {
-      // Single section for single chunk
-      sections = [{
-        id: 'section_0',
-        summary: chunkSummaries[0]?.summary || 'Processing failed',
-        actionItems: chunkSummaries[0]?.actionItems || [],
-        decisions: chunkSummaries[0]?.decisions || [],
-        questions: chunkSummaries[0]?.questions || [],
-        startTime: 0,
-        endTime: duration,
-        chunkIds: [chunkSummaries[0]?.id || 'chunk_0']
-      }];
-    }
-    
-    // Step 6: Refine phase - Create final artifacts
-    onProgress?.({ stage: 'refining', progress: 0, message: 'Creating final summary...' });
-    const artifacts = await refineFinalArtifacts(sections, meetingContext);
-    onProgress?.({ stage: 'refining', progress: 100, message: 'Final summary complete' });
-    
-    // Step 7: Generate email draft
-    const emailDraft = await generateEmailDraft({
-      meetingTitle,
-      meetingDate: new Date().toISOString(),
-      attendees,
-      artifacts,
-    }, onProgress);
-
-    onProgress?.({ stage: 'completed', progress: 100, message: 'Processing complete!' });
-
-    return {
-      transcript: validatedTranscript,
-      artifacts: { ...artifacts, email_draft: emailDraft },
-      emailDraft,
-    };
   } catch (error) {
     console.error('Streaming meeting processing failed:', error);
-    
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      
-      if (error.message.includes('Invalid transcription response') || error.message.includes('missing or invalid text field')) {
-        throw new Error('Failed to transcribe audio. The audio may be corrupted or the service is unavailable. Please try again.');
-      } else if (error.message.includes('Invalid transcript')) {
-        throw new Error('The recording appears to be empty or too short. Please try recording again.');
-      } else if (error.message.includes('timed out')) {
-        throw new Error('Processing timed out. The audio file may be too long. Please try with a shorter recording.');
-      } else if (error.message.includes('Transcription')) {
-        throw new Error('Failed to transcribe audio. Please check your internet connection and try again.');
-      } else if (error.message.includes('Chunk') || error.message.includes('processing')) {
-        throw new Error('Failed to analyze the transcript. Please try again or contact support.');
-      }
-    }
-    
-    throw new Error('Meeting processing failed. Please try again or contact support if the issue persists.');
+    throw new Error('Meeting processing failed. Please try again.');
   }
 };
 
-// Helper function to split transcript into logical chunks with size limits
-const splitTranscriptIntoChunks = (transcript: string, targetChunks?: number): string[] => {
-  // If transcript is short enough, return as single chunk
-  if (transcript.length <= MAX_TRANSCRIPT_LENGTH && !targetChunks) {
-    return [transcript];
-  }
-  
-  const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const chunks: string[] = [];
-  let currentChunk = '';
-  
-  for (const sentence of sentences) {
-    const trimmedSentence = sentence.trim();
-    if (!trimmedSentence) continue;
-    
-    // If adding this sentence would exceed chunk size, start new chunk
-    if (currentChunk.length > 0 && (currentChunk.length + trimmedSentence.length) > CHUNK_SIZE_LIMIT) {
-      chunks.push(currentChunk.trim() + '.');
-      currentChunk = trimmedSentence;
-    } else {
-      currentChunk += (currentChunk ? '. ' : '') + trimmedSentence;
-    }
-  }
-  
-  // Add the last chunk
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim() + '.');
-  }
-  
-  return chunks.filter(chunk => chunk.trim().length > 20); // Filter out very short chunks
-};
 
-// Helper function to validate and clean transcript
-const validateTranscript = (transcript: string): string => {
-  if (!transcript || typeof transcript !== 'string') {
-    throw new Error('Invalid transcript: must be a non-empty string');
-  }
-  
-  const cleaned = transcript.trim();
-  if (cleaned.length === 0) {
-    throw new Error('Invalid transcript: transcript is empty');
-  }
-  
-  if (cleaned.length < 10) {
-    throw new Error('Invalid transcript: transcript is too short (less than 10 characters)');
-  }
-  
-  return cleaned;
-};
 
-// Optimized function for shorter meetings with better error handling
+// Optimized function for standard meetings
 export const processFullMeeting = async (
   audioFile: File | { uri: string; name: string; type: string },
   meetingTitle: string,
@@ -1011,24 +703,19 @@ export const processFullMeeting = async (
   try {
     onProgress?.({ stage: 'transcribing', progress: 0, message: 'Starting transcription...' });
 
-    // Validate audio file before processing
     if ('size' in audioFile && audioFile.size === 0) {
       throw new Error('Audio file is empty or corrupted');
     }
     
-    console.log('Starting transcription for audio file:', audioFile);
+    console.log('Starting transcription for audio file');
     const transcriptResult = await transcribeAudio({ audio: audioFile });
-    
-    // Validate transcript
     const validatedTranscript = validateTranscript(transcriptResult.text);
     
     console.log('Transcription completed, length:', validatedTranscript.length, 'characters');
     onProgress?.({ stage: 'transcribing', progress: 100, message: 'Transcription complete' });
 
-    // Check if we should use chunked processing even for "short" meetings
     if (validatedTranscript.length > MAX_TRANSCRIPT_LENGTH) {
-      console.log('Transcript too long for direct processing, switching to chunked processing');
-      // Delegate to streaming processing for long transcripts
+      console.log('Transcript too long, using streaming processing');
       return await processFullMeetingStreaming(audioFile, meetingTitle, attendees, 0, onProgress);
     }
 
@@ -1039,8 +726,6 @@ export const processFullMeeting = async (
       meetingDate: new Date().toISOString(),
     }, onProgress);
 
-    console.log('Transcript processing completed');
-
     const emailDraft = await generateEmailDraft({
       meetingTitle,
       meetingDate: new Date().toISOString(),
@@ -1048,7 +733,6 @@ export const processFullMeeting = async (
       artifacts,
     }, onProgress);
 
-    console.log('Email draft generation completed');
     onProgress?.({ stage: 'completed', progress: 100, message: 'Processing complete!' });
 
     return {
@@ -1057,34 +741,16 @@ export const processFullMeeting = async (
       emailDraft,
     };
   } catch (error) {
-    console.error('Full meeting processing failed:', error);
+    console.error('Meeting processing failed:', error);
     
     if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      
-      if (error.message.includes('Invalid transcription response') || error.message.includes('missing or invalid text field')) {
-        throw new Error('Failed to transcribe audio. The audio may be corrupted or the service is unavailable. Please try again.');
-      } else if (error.message.includes('Invalid transcript')) {
+      if (error.message.includes('Invalid transcript')) {
         throw new Error('The recording appears to be empty or too short. Please try recording again.');
-      } else if (error.message.includes('timed out')) {
-        throw new Error('Processing timed out. Please try with a shorter recording.');
-      } else if (error.message.includes('Transcription') || error.message.includes('transcribe')) {
+      } else if (error.message.includes('transcribe')) {
         throw new Error('Failed to transcribe audio. Please check your internet connection and try again.');
-      } else if (error.message.includes('processing') || error.message.includes('analyze')) {
-        throw new Error('Failed to analyze transcript. The transcription was successful but AI analysis failed.');
-      } else if (error.message.includes('Email') || error.message.includes('email')) {
-        throw new Error('Failed to generate email draft. The analysis was successful but email generation failed.');
-      } else if (error.message.includes('empty') || error.message.includes('silent')) {
-        throw new Error('The recording appears to be empty or silent. Please try recording again.');
-      } else if (error.message.includes('corrupted')) {
-        throw new Error('The audio file appears to be corrupted. Please try recording again.');
       }
     }
     
-    throw new Error('Meeting processing failed. Please try again or contact support if the issue persists.');
+    throw new Error('Meeting processing failed. Please try again.');
   }
 };

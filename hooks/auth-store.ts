@@ -32,6 +32,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isAuthenticated: false,
   });
 
+  // All useCallback hooks defined in consistent order
   const loadStoredAuth = useCallback(async () => {
     try {
       const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
@@ -53,10 +54,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const signUp = useCallback(async (email: string, fullName: string, location: string, locationCoords?: { latitude: number; longitude: number }) => {
     try {
-      // Check if admin email
       const isAdmin = email.toLowerCase().startsWith('admin@');
-      
-      // Generate a 6-digit verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       
       const user: User = {
@@ -71,15 +69,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         verificationCode,
       };
 
-      // Store user data for admin access
       await AsyncStorage.setItem(`user_${user.id}`, JSON.stringify(user));
-      // Store pending verification data
       await AsyncStorage.setItem('pending_verification', JSON.stringify(user));
       
-      // Simulate sending verification email
       console.log(`Verification email sent to ${email} with code: ${verificationCode}`);
       
-      // Don't authenticate yet - user needs to verify email first
       setAuthState({
         user: null,
         isLoading: false,
@@ -95,7 +89,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const signIn = useCallback(async (email: string) => {
     try {
-      // Check all stored users
       const keys = await AsyncStorage.getAllKeys();
       const userKeys = keys.filter(key => key.startsWith('user_'));
       const userData = await AsyncStorage.multiGet(userKeys);
@@ -104,7 +97,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         if (value) {
           try {
             const user = JSON.parse(value);
-            return user.email === email;
+            return user.email === email && user.isEmailVerified;
           } catch {
             return false;
           }
@@ -124,7 +117,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         return { success: true };
       }
       
-      return { success: false, error: 'Account not found. Please sign up first.' };
+      return { success: false, error: 'Account not found or email not verified. Please sign up or verify your email first.' };
     } catch (error) {
       console.error('Sign in failed:', error);
       return { success: false, error: 'Failed to sign in' };
@@ -144,13 +137,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, []);
 
-  useEffect(() => {
-    loadStoredAuth();
-  }, [loadStoredAuth]);
-
   const verifyEmail = useCallback(async (code: string, email?: string) => {
     try {
-      // Get pending verification data
       const pendingData = await AsyncStorage.getItem('pending_verification');
       if (!pendingData) {
         return { success: false, error: 'No pending verification found' };
@@ -158,15 +146,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       
       const pendingUser = JSON.parse(pendingData) as User;
       
-      // Check if email matches (if provided)
       if (email && pendingUser.email !== email) {
         return { success: false, error: 'Email does not match pending verification' };
       }
       
-      // Verify the code
       if (code === pendingUser.verificationCode) {
         const updatedUser = { ...pendingUser, isEmailVerified: true };
-        delete updatedUser.verificationCode; // Remove verification code after successful verification
+        delete updatedUser.verificationCode;
         
         await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
         await AsyncStorage.setItem(`user_${updatedUser.id}`, JSON.stringify(updatedUser));
@@ -189,7 +175,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const sendPasswordReset = useCallback(async (email: string) => {
     try {
-      // In a real app, this would send a password reset email
       console.log(`Password reset email sent to ${email}`);
       return { success: true };
     } catch (error) {
@@ -210,7 +195,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         return { success: false, error: 'Email does not match pending verification' };
       }
       
-      // Generate new verification code
       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
       pendingUser.verificationCode = newCode;
       
@@ -223,6 +207,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       return { success: false, error: 'Failed to resend verification code' };
     }
   }, []);
+
+  // useEffect hook - always after all useCallback hooks
+  useEffect(() => {
+    loadStoredAuth();
+  }, [loadStoredAuth]);
 
   return useMemo(() => ({
     ...authState,
