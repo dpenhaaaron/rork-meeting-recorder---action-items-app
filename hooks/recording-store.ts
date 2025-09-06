@@ -28,17 +28,6 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const streamRef = useRef<MediaStream | null>(null);
   const stopRecordingRef = useRef<(() => Promise<string | null>) | null>(null);
   
-  useEffect(() => {
-    stopRecordingRef.current = async () => {
-      try {
-        return await stopRecording();
-      } catch (e) {
-        console.error('Auto-stop failed:', e);
-        return null;
-      }
-    };
-  }, []);
-  
   const storeAudioBlob = useCallback(async (meetingId: string, blob: Blob) => {
     if (Platform.OS !== 'web') return;
     
@@ -165,7 +154,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           artifacts: state.currentMeeting.artifacts,
         };
 
-        const updatedMeetings = meetings.map(m => 
+        const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+        const updatedMeetings = currentMeetings.map((m: Meeting) => 
           m.id === updatedMeeting.id ? updatedMeeting : m
         );
         await saveMeetings(updatedMeetings);
@@ -196,7 +186,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
       return null;
     }
-  }, [state.currentMeeting, state.duration, meetings, saveMeetings]);
+  }, [state.currentMeeting, state.duration, saveMeetings]);
 
   const startRecording = useCallback(async (title: string, attendees: string[] = []) => {
     if (!consentGiven) {
@@ -276,7 +266,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         currentMeeting: newMeeting,
       }));
 
-      const updatedMeetings = [...meetings, newMeeting];
+      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+      const updatedMeetings = [...currentMeetings, newMeeting];
       await saveMeetings(updatedMeetings);
 
       durationInterval.current = setInterval(() => {
@@ -303,7 +294,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       console.error('Failed to start recording:', error);
       throw error;
     }
-  }, [consentGiven, meetings, saveMeetings]);
+  }, [consentGiven, saveMeetings]);
 
   const pauseRecording = useCallback(async () => {
     try {
@@ -377,7 +368,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                       await storeAudioBlob(meetingId, blob);
                       console.log('Stored web audio blob in IndexedDB:', { meetingId, size: blob.size });
                       
-                      const updatedMeetings = meetings.map(m => 
+                      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+                      const updatedMeetings = currentMeetings.map((m: Meeting) => 
                         m.id === meetingId 
                           ? { ...m, audioUri: `indexeddb://${meetingId}` }
                           : m
@@ -443,16 +435,17 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       console.error('Failed to stop recording:', error);
       throw error;
     }
-  }, [state.currentMeeting, finishStopRecording, meetings, saveMeetings, storeAudioBlob]);
+  }, [state.currentMeeting, finishStopRecording, saveMeetings, storeAudioBlob]);
 
   const updateMeetingArtifacts = useCallback(async (meetingId: string, artifacts: MeetingArtifacts) => {
-    const updatedMeetings = meetings.map(meeting => 
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((meeting: Meeting) => 
       meeting.id === meetingId 
         ? { ...meeting, artifacts, status: 'completed' as const }
         : meeting
     );
     await saveMeetings(updatedMeetings);
-  }, [meetings, saveMeetings]);
+  }, [saveMeetings]);
 
   const processMeeting = useCallback(async (meetingId: string) => {
     console.log('Processing meeting:', meetingId);
@@ -477,7 +470,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         try {
           const fileInfo = await FileSystem.getInfoAsync(meeting.audioUri);
           hasAudio = fileInfo.exists && ('size' in fileInfo ? (fileInfo.size ?? 0) : 0) > 0;
-        } catch (e) {
+        } catch {
           hasAudio = false;
         }
       }
@@ -598,11 +591,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       
       throw error;
     }
-  }, [meetings, saveMeetings, getAudioBlob, loadMeetings]);
+  }, [saveMeetings, getAudioBlob, loadMeetings]);
 
   const deleteMeeting = useCallback(async (meetingId: string) => {
     try {
-      const meeting = meetings.find(m => m.id === meetingId);
+      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+      const meeting = currentMeetings.find((m: Meeting) => m.id === meetingId);
       
       if (meeting?.audioUri) {
         if (Platform.OS === 'web') {
@@ -615,17 +609,19 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         }
       }
       
-      const updatedMeetings = meetings.filter(m => m.id !== meetingId);
+      const updatedMeetings = currentMeetings.filter((m: Meeting) => m.id !== meetingId);
       await saveMeetings(updatedMeetings);
     } catch (error) {
       console.error('Failed to delete meeting files:', error);
-      const updatedMeetings = meetings.filter(m => m.id !== meetingId);
+      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+      const updatedMeetings = currentMeetings.filter((m: Meeting) => m.id !== meetingId);
       await saveMeetings(updatedMeetings);
     }
-  }, [meetings, saveMeetings, deleteAudioBlob]);
+  }, [saveMeetings, deleteAudioBlob]);
 
   const retryProcessing = useCallback(async (meetingId: string) => {
-    const updatedMeetings = meetings.map(m => 
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((m: Meeting) => 
       m.id === meetingId 
         ? { ...m, status: 'processing' as const }
         : m
@@ -633,12 +629,23 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     await saveMeetings(updatedMeetings);
     
     return processMeeting(meetingId);
-  }, [meetings, saveMeetings, processMeeting]);
+  }, [saveMeetings, processMeeting]);
 
   useEffect(() => {
     loadMeetings();
     setupAudio();
   }, [loadMeetings, setupAudio]);
+
+  useEffect(() => {
+    stopRecordingRef.current = async () => {
+      try {
+        return await stopRecording();
+      } catch (e) {
+        console.error('Auto-stop failed:', e);
+        return null;
+      }
+    };
+  }, [stopRecording]);
 
   return useMemo(() => ({
     state,
