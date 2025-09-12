@@ -277,8 +277,7 @@ export default function MeetingsScreen() {
                 key={meeting.id} 
                 style={styles.meetingCardContainer}
                 onPress={() => {
-                  // TODO: Navigate to meeting detail screen
-                  Alert.alert('Meeting Details', 'Meeting detail view coming soon!');
+                  router.push(`/meeting/${meeting.id}`);
                 }}
               >
                 <View style={styles.meetingCard}>

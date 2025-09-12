@@ -4,7 +4,8 @@ const AI_BASE_URL = 'https://toolkit.rork.com';
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 2000;
 const MAX_TRANSCRIPT_LENGTH = 12000; // Process most meetings directly
-const CHUNK_SIZE_LIMIT = 3000; // Larger chunks for efficiency
+const CHUNK_SIZE_LIMIT = 2000; // Optimized chunk size
+const CHUNK_DELAY = 100; // Delay between chunk processing in ms
 
 export interface TranscribeRequest {
   audio: File | { uri: string; name: string; type: string };
@@ -625,19 +626,34 @@ export const processFullMeetingStreaming = async (
       const chunks = splitTranscriptIntoChunks(validatedTranscript);
       console.log(`Processing ${chunks.length} chunks`);
       
-      // Process chunks in parallel for better performance
-      const chunkPromises = chunks.map(async (chunk, index) => {
+      // Process chunks sequentially with controlled delay
+      const chunkResults = [];
+      for (let index = 0; index < chunks.length; index++) {
+        const chunk = chunks[index];
+        onProgress?.({
+          stage: 'chunking',
+          progress: Math.round((index / chunks.length) * 100),
+          message: `Processing chunk ${index + 1} of ${chunks.length}...`,
+          currentChunk: index + 1,
+          totalChunks: chunks.length
+        });
+        
         try {
-          await new Promise(resolve => setTimeout(resolve, index * 200)); // Stagger requests
-          return await processTranscript({
+          // Add delay between chunks to avoid overwhelming the API
+          if (index > 0) {
+            await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY));
+          }
+          
+          const result = await processTranscript({
             transcript: chunk,
             attendees,
             meetingTitle,
             meetingDate: new Date().toISOString(),
           });
+          chunkResults.push(result);
         } catch (error) {
           console.warn(`Chunk ${index} failed, using fallback`);
-          return {
+          chunkResults.push({
             action_items: [],
             decisions: [],
             open_questions: [],
@@ -646,11 +662,9 @@ export const processFullMeetingStreaming = async (
               detailed_400w: 'Chunk processing failed',
               bullet_12: ['Chunk processing failed']
             }
-          };
+          });
         }
-      });
-      
-      const chunkResults = await Promise.all(chunkPromises);
+      }
       
       // Merge results
       const artifacts: MeetingArtifacts = {
