@@ -158,7 +158,23 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
     }
     
     const formData = new FormData();
-    formData.append('audio', request.audio as any);
+    
+    // Handle different audio formats properly
+    if ('uri' in request.audio) {
+      // Mobile platform - properly format the file object
+      const audioFile = {
+        uri: request.audio.uri,
+        name: request.audio.name,
+        type: request.audio.type
+      } as any;
+      formData.append('audio', audioFile);
+      console.log('Appending mobile audio file:', audioFile);
+    } else {
+      // Web platform - File object
+      formData.append('audio', request.audio as File);
+      console.log('Appending web audio file');
+    }
+    
     if (request.language) {
       formData.append('language', request.language);
     }
