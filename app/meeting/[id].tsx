@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Share, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Share, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Share2, Download, Mail, Trash2, RefreshCw, FileText, Mic } from 'lucide-react-native';
@@ -9,6 +9,7 @@ import LiveTranscript from '@/components/LiveTranscript';
 import { Meeting } from '@/types/meeting';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as Linking from 'expo-linking';
 
 export default function MeetingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -78,17 +79,188 @@ export default function MeetingDetailScreen() {
   };
 
   const handleEmailDraft = () => {
-    if (!meeting?.artifacts?.email_draft) return;
+    if (!meeting?.artifacts) return;
     
-    // In a real app, this would open an email client
+    const emailContent = generateEnhancedEmailDraft();
+    
     Alert.alert(
       'Email Draft',
-      meeting.artifacts.email_draft.subject,
+      'Choose how to share the meeting summary:',
       [
-        { text: 'Copy Body', onPress: () => copyToClipboard(meeting.artifacts?.email_draft?.body_markdown || '') },
-        { text: 'Close', style: 'cancel' }
+        { text: 'Email App', onPress: () => openEmailApp(emailContent) },
+        { text: 'Copy Content', onPress: () => copyToClipboard(emailContent.body) },
+        { text: 'Share Options', onPress: () => showShareOptions(emailContent) },
+        { text: 'Cancel', style: 'cancel' }
       ]
     );
+  };
+
+  const generateEnhancedEmailDraft = () => {
+    if (!meeting?.artifacts) return { subject: '', body: '' };
+    
+    const subject = `Meeting Summary: ${meeting.title} - ${new Date(meeting.date).toLocaleDateString()}`;
+    
+    let body = `Hi team,\n\nHere's a summary of our meeting "${meeting.title}" from ${new Date(meeting.date).toLocaleDateString()}:\n\n`;
+    
+    // Executive Summary
+    if (meeting.artifacts.summaries?.executive_120w) {
+      body += `📋 **EXECUTIVE SUMMARY**\n${meeting.artifacts.summaries.executive_120w}\n\n`;
+    }
+    
+    // Key Points
+    if (meeting.artifacts.summaries?.bullet_12 && meeting.artifacts.summaries.bullet_12.length > 0) {
+      body += `🔑 **KEY POINTS**\n`;
+      meeting.artifacts.summaries.bullet_12.forEach(point => {
+        body += `• ${point}\n`;
+      });
+      body += '\n';
+    }
+    
+    // Action Items
+    if (meeting.artifacts.action_items.length > 0) {
+      body += `✅ **ACTION ITEMS**\n`;
+      meeting.artifacts.action_items.forEach(item => {
+        body += `• ${item.title}\n`;
+        body += `  - Assigned to: ${item.assignee}\n`;
+        body += `  - Priority: ${item.priority}\n`;
+        if (item.due_date) body += `  - Due: ${new Date(item.due_date).toLocaleDateString()}\n`;
+        body += '\n';
+      });
+    }
+    
+    // Decisions
+    if (meeting.artifacts.decisions.length > 0) {
+      body += `🎯 **DECISIONS MADE**\n`;
+      meeting.artifacts.decisions.forEach(decision => {
+        body += `• ${decision.statement}\n`;
+        if (decision.rationale) body += `  - Rationale: ${decision.rationale}\n`;
+        body += '\n';
+      });
+    }
+    
+    // Open Questions
+    if (meeting.artifacts.open_questions.length > 0) {
+      body += `❓ **OPEN QUESTIONS**\n`;
+      meeting.artifacts.open_questions.forEach(question => {
+        body += `• ${question.question}\n`;
+        if (question.owner) body += `  - Owner: ${question.owner}\n`;
+        if (question.needed_by) body += `  - Needed by: ${question.needed_by}\n`;
+        body += '\n';
+      });
+    }
+    
+    body += `Meeting Duration: ${formatDuration(meeting.duration)}\n`;
+    body += `Attendees: ${meeting.attendees.map(a => a.name).join(', ')}\n\n`;
+    body += 'Best regards';
+    
+    return { subject, body };
+  };
+
+  const openEmailApp = async (emailContent: { subject: string; body: string }) => {
+    try {
+      const emailUrl = `mailto:?subject=${encodeURIComponent(emailContent.subject)}&body=${encodeURIComponent(emailContent.body)}`;
+      const canOpen = await Linking.canOpenURL(emailUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(emailUrl);
+      } else {
+        Alert.alert('Error', 'No email app found. Content copied to clipboard.');
+        await copyToClipboard(emailContent.body);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open email app');
+    }
+  };
+
+  const showShareOptions = async (emailContent: { subject: string; body: string }) => {
+    const shareContent = `${emailContent.subject}\n\n${emailContent.body}`;
+    
+    Alert.alert(
+      'Share Meeting Summary',
+      'Choose your preferred messaging app:',
+      [
+        { text: 'WhatsApp', onPress: () => shareToWhatsApp(shareContent) },
+        { text: 'Messages (SMS)', onPress: () => shareToMessages(shareContent) },
+        { text: 'Telegram', onPress: () => shareToTelegram(shareContent) },
+        { text: 'Slack', onPress: () => shareToSlack(shareContent) },
+        { text: 'More Options', onPress: () => shareToGeneric(shareContent) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  const shareToWhatsApp = async (content: string) => {
+    try {
+      const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(content)}`;
+      const canOpen = await Linking.canOpenURL(whatsappUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        Alert.alert('WhatsApp not found', 'WhatsApp is not installed on this device.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  };
+
+  const shareToMessages = async (content: string) => {
+    try {
+      const smsUrl = Platform.OS === 'ios' 
+        ? `sms:&body=${encodeURIComponent(content)}`
+        : `sms:?body=${encodeURIComponent(content)}`;
+      
+      const canOpen = await Linking.canOpenURL(smsUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(smsUrl);
+      } else {
+        Alert.alert('Messages not available', 'SMS messaging is not available on this device.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open Messages');
+    }
+  };
+
+  const shareToTelegram = async (content: string) => {
+    try {
+      const telegramUrl = `tg://msg?text=${encodeURIComponent(content)}`;
+      const canOpen = await Linking.canOpenURL(telegramUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(telegramUrl);
+      } else {
+        Alert.alert('Telegram not found', 'Telegram is not installed on this device.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open Telegram');
+    }
+  };
+
+  const shareToSlack = async (content: string) => {
+    try {
+      const slackUrl = `slack://open?text=${encodeURIComponent(content)}`;
+      const canOpen = await Linking.canOpenURL(slackUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(slackUrl);
+      } else {
+        Alert.alert('Slack not found', 'Slack is not installed on this device.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open Slack');
+    }
+  };
+
+  const shareToGeneric = async (content: string) => {
+    try {
+      await Share.share({
+        message: content,
+        title: `Meeting Summary: ${meeting?.title}`,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to share content');
+    }
   };
 
   const handleDelete = () => {
@@ -116,32 +288,65 @@ export default function MeetingDetailScreen() {
   };
 
   const copyToClipboard = async (text: string) => {
-    // This would use Clipboard API in a real implementation
-    Alert.alert('Copied', 'Content copied to clipboard');
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // For native platforms, we'll use the Share API as a fallback
+        await Share.share({ message: text });
+        return;
+      }
+      Alert.alert('Copied', 'Content copied to clipboard');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to copy to clipboard');
+    }
   };
 
   const generateShareContent = (): string => {
     if (!meeting) return '';
     
-    let content = `Meeting: ${meeting.title}\n`;
-    content += `Date: ${new Date(meeting.date).toLocaleString()}\n`;
-    content += `Duration: ${formatDuration(meeting.duration)}\n\n`;
+    let content = `📅 Meeting: ${meeting.title}\n`;
+    content += `📆 Date: ${new Date(meeting.date).toLocaleString()}\n`;
+    content += `⏱️ Duration: ${formatDuration(meeting.duration)}\n\n`;
     
     if (meeting.artifacts) {
-      content += `Summary:\n${meeting.artifacts.summaries?.executive_120w || 'N/A'}\n\n`;
+      // Executive Summary
+      if (meeting.artifacts.summaries?.executive_120w) {
+        content += `📋 SUMMARY:\n${meeting.artifacts.summaries.executive_120w}\n\n`;
+      }
       
-      if (meeting.artifacts.action_items.length > 0) {
-        content += `Action Items:\n`;
-        meeting.artifacts.action_items.forEach(item => {
-          content += `• ${item.title} (${item.assignee})\n`;
+      // Key Points
+      if (meeting.artifacts.summaries?.bullet_12 && meeting.artifacts.summaries.bullet_12.length > 0) {
+        content += `🔑 KEY POINTS:\n`;
+        meeting.artifacts.summaries.bullet_12.forEach(point => {
+          content += `• ${point}\n`;
         });
         content += '\n';
       }
       
+      // Action Items
+      if (meeting.artifacts.action_items.length > 0) {
+        content += `✅ ACTION ITEMS:\n`;
+        meeting.artifacts.action_items.forEach(item => {
+          content += `• ${item.title} (${item.assignee}) - ${item.priority}\n`;
+        });
+        content += '\n';
+      }
+      
+      // Decisions
       if (meeting.artifacts.decisions.length > 0) {
-        content += `Decisions:\n`;
+        content += `🎯 DECISIONS:\n`;
         meeting.artifacts.decisions.forEach(decision => {
           content += `• ${decision.statement}\n`;
+        });
+        content += '\n';
+      }
+      
+      // Open Questions
+      if (meeting.artifacts.open_questions.length > 0) {
+        content += `❓ OPEN QUESTIONS:\n`;
+        meeting.artifacts.open_questions.forEach(question => {
+          content += `• ${question.question}\n`;
         });
       }
     }
@@ -337,12 +542,10 @@ export default function MeetingDetailScreen() {
               <Text style={styles.actionButtonText}>Export</Text>
             </TouchableOpacity>
             
-            {meeting.artifacts.email_draft && (
-              <TouchableOpacity style={styles.actionButton} onPress={handleEmailDraft}>
-                <Mail size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Email Draft</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={styles.actionButton} onPress={handleEmailDraft}>
+              <Mail size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Share Summary</Text>
+            </TouchableOpacity>
           </View>
         )}
       </SafeAreaView>
