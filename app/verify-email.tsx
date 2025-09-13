@@ -55,16 +55,8 @@ export default function VerifyEmailScreen() {
       const result = await verifyEmail(verificationCode, email);
       
       if (result.success) {
-        Alert.alert(
-          'Email Verified', 
-          'Your email has been successfully verified! You are now signed in.',
-          [
-            { 
-              text: 'Continue', 
-              onPress: () => router.replace('/(tabs)/home')
-            }
-          ]
-        );
+        // Directly navigate to home without showing alert
+        router.replace('/(tabs)/home');
       } else {
         Alert.alert('Verification Failed', result.error || 'Invalid verification code. Please try again.');
       }

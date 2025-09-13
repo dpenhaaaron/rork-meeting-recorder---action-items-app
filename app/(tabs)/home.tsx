@@ -58,14 +58,21 @@ export default function HomeScreen() {
       if (meetingId) {
         Alert.alert(
           'Recording Saved', 
-          'Processing has started. You can monitor status in Recent Meetings.',
+          'Processing will start automatically. You can monitor status in Recent Meetings.',
           [
             { text: 'OK', style: 'default' }
           ]
         );
+        
+        // Start processing automatically
+        setTimeout(() => {
+          processMeeting(meetingId).catch((error) => {
+            console.error('Auto-processing failed:', error);
+          });
+        }, 1000);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to stop');
+      Alert.alert('Error', 'Failed to stop recording');
     }
   };
 

@@ -5,7 +5,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { Meeting, RecordingState, MeetingArtifacts } from '@/types/meeting';
-import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress, generateEmailDraft } from '@/services/ai-api';
+import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
 const MAX_RECORDING_DURATION = 15 * 60; // 15 minutes in seconds
@@ -477,32 +477,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     }
     
     if (!hasAudio) {
-      if (meeting.artifacts) {
-        const attendeeNames = meeting.attendees.map((a: any) => a.name);
-        const emailDraft = await generateEmailDraft({
-          meetingTitle: meeting.title,
-          meetingDate: meeting.date,
-          attendees: attendeeNames,
-          artifacts: meeting.artifacts,
-        }).catch(() => undefined);
-        
-        const result = {
-          transcript: meeting.transcript ? meeting.transcript.segments.map((s: any) => s.text).join(' ') : '',
-          artifacts: emailDraft ? { ...meeting.artifacts, email_draft: emailDraft } : meeting.artifacts,
-          emailDraft: emailDraft ?? meeting.artifacts.email_draft,
-        };
-
-        const latestMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-        const updatedMeetings = latestMeetings.map((m: Meeting) => 
-          m.id === meetingId 
-            ? { ...m, artifacts: result.artifacts, status: 'completed' as const }
-            : m
-        );
-        await saveMeetings(updatedMeetings);
-        setProcessingProgress(null);
-        return result;
-      }
-      throw new Error('Audio file not found. The recording may have been lost or corrupted. Please record the meeting again.');
+      console.error(`Audio source missing and no artifacts available, cannot process: ${meetingId}`);
+      throw new Error('Audio file not found and no prior artifacts available. Please re-record this meeting.');
     }
 
     try {

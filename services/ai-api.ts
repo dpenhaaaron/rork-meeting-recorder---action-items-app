@@ -157,6 +157,11 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       throw new Error('Audio file is empty');
     }
     
+    // Additional validation for mobile files
+    if ('uri' in request.audio && !request.audio.uri) {
+      throw new Error('Audio file URI is missing');
+    }
+    
     const formData = new FormData();
     
     // Handle different audio formats properly
