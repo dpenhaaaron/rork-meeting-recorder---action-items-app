@@ -213,7 +213,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     loadStoredAuth();
   }, [loadStoredAuth]);
 
-  return useMemo(() => ({
+  const contextValue = useMemo(() => ({
     ...authState,
     signUp,
     signIn,
@@ -222,4 +222,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     sendPasswordReset,
     resendVerificationCode,
   }), [authState, signUp, signIn, signOut, verifyEmail, sendPasswordReset, resendVerificationCode]);
+
+  return contextValue;
 });

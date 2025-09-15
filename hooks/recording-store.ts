@@ -154,11 +154,15 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           artifacts: state.currentMeeting.artifacts,
         };
 
-        const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-        const updatedMeetings = currentMeetings.map((m: Meeting) => 
-          m.id === updatedMeeting.id ? updatedMeeting : m
-        );
-        await saveMeetings(updatedMeetings);
+        try {
+          const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+          const updatedMeetings = currentMeetings.map((m: Meeting) => 
+            m.id === updatedMeeting.id ? updatedMeeting : m
+          );
+          await saveMeetings(updatedMeetings);
+        } catch (storageError) {
+          console.error('Failed to save meeting to storage:', storageError);
+        }
 
         setState(prev => ({
           ...prev,
@@ -181,6 +185,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       return null;
     } catch (error) {
       console.error('Failed to finish stop recording:', error);
+      
+      // Ensure state is reset even on error
+      setState(prev => ({
+        ...prev,
+        isRecording: false,
+        isPaused: false,
+        duration: 0,
+        currentMeeting: undefined,
+      }));
+      
       if (resolve) {
         resolve(null);
       }
@@ -358,10 +372,29 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           return new Promise((resolve) => {
             const mediaRecorder = mediaRecorderRef.current!;
             
+            const cleanup = () => {
+              try {
+                audioChunksRef.current = [];
+                if (streamRef.current) {
+                  streamRef.current.getTracks().forEach(track => {
+                    try {
+                      track.stop();
+                    } catch (e) {
+                      console.warn('Failed to stop track:', e);
+                    }
+                  });
+                  streamRef.current = null;
+                }
+                mediaRecorderRef.current = null;
+              } catch (e) {
+                console.warn('Cleanup error:', e);
+              }
+            };
+            
             mediaRecorder.onstop = async () => {
               try {
                 const meetingId = state.currentMeeting?.id;
-                if (meetingId) {
+                if (meetingId && audioChunksRef.current.length > 0) {
                   try {
                     const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                     if (blob.size > 0) {
@@ -380,51 +413,72 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                     console.error('Failed to persist web audio blob:', e);
                   }
                 }
-                audioChunksRef.current = [];
-                if (streamRef.current) {
-                  streamRef.current.getTracks().forEach(track => track.stop());
-                  streamRef.current = null;
-                }
+                
+                cleanup();
                 const placeholderUri = meetingId ? `indexeddb://${meetingId}` : null;
                 await finishStopRecording(placeholderUri, resolve);
               } catch (error) {
                 console.error('Error in onstop handler:', error);
+                cleanup();
                 resolve(null);
               }
             };
             
-            mediaRecorder.stop();
+            mediaRecorder.onerror = (error) => {
+              console.error('MediaRecorder error:', error);
+              cleanup();
+              resolve(null);
+            };
+            
+            try {
+              mediaRecorder.stop();
+            } catch (e) {
+              console.error('Failed to stop MediaRecorder:', e);
+              cleanup();
+              resolve(null);
+            }
           });
         }
       } else {
         if (recordingRef.current) {
-          await recordingRef.current.stopAndUnloadAsync();
-          const tempUri = recordingRef.current.getURI();
-          const meetingId = state.currentMeeting?.id ?? Date.now().toString();
-          if (tempUri) {
-            try {
-              const dirInfo = await FileSystem.getInfoAsync(RECORDINGS_DIR);
-              if (!dirInfo.exists) {
-                await FileSystem.makeDirectoryAsync(RECORDINGS_DIR, { intermediates: true });
-              }
-              const ext = Platform.OS === 'ios' ? '.wav' : '.m4a';
-              const dest = `${RECORDINGS_DIR}${meetingId}${ext}`;
-              await FileSystem.moveAsync({ from: tempUri, to: dest });
-              audioUri = dest;
-              console.log('Saved recording to:', dest);
-              
-              const savedFileInfo = await FileSystem.getInfoAsync(dest);
-              if (!savedFileInfo.exists || savedFileInfo.size === 0) {
-                console.error('Saved file is missing or empty:', dest);
+          try {
+            await recordingRef.current.stopAndUnloadAsync();
+            const tempUri = recordingRef.current.getURI();
+            const meetingId = state.currentMeeting?.id ?? Date.now().toString();
+            
+            if (tempUri) {
+              try {
+                const dirInfo = await FileSystem.getInfoAsync(RECORDINGS_DIR);
+                if (!dirInfo.exists) {
+                  await FileSystem.makeDirectoryAsync(RECORDINGS_DIR, { intermediates: true });
+                }
+                const ext = Platform.OS === 'ios' ? '.wav' : '.m4a';
+                const dest = `${RECORDINGS_DIR}${meetingId}${ext}`;
+                await FileSystem.moveAsync({ from: tempUri, to: dest });
+                audioUri = dest;
+                console.log('Saved recording to:', dest);
+                
+                const savedFileInfo = await FileSystem.getInfoAsync(dest);
+                if (!savedFileInfo.exists || ('size' in savedFileInfo && savedFileInfo.size === 0)) {
+                  console.error('Saved file is missing or empty:', dest);
+                  audioUri = null;
+                }
+              } catch (e) {
+                console.error('Failed to persist recording file:', e);
                 audioUri = null;
               }
+            }
+          } catch (e) {
+            console.error('Failed to stop recording:', e);
+            audioUri = null;
+          } finally {
+            recordingRef.current = null;
+            try {
+              await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
             } catch (e) {
-              console.error('Failed to persist recording file:', e);
-              audioUri = null;
+              console.warn('Failed to reset audio mode:', e);
             }
           }
-          recordingRef.current = null;
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
         }
         
         return await finishStopRecording(audioUri);
@@ -433,6 +487,17 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       return null;
     } catch (error) {
       console.error('Failed to stop recording:', error);
+      
+      // Ensure cleanup on error
+      try {
+        if (Platform.OS !== 'web' && recordingRef.current) {
+          recordingRef.current = null;
+          await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        }
+      } catch (e) {
+        console.warn('Cleanup error:', e);
+      }
+      
       throw error;
     }
   }, [state.currentMeeting, finishStopRecording, saveMeetings, storeAudioBlob]);
@@ -693,6 +758,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         return await stopRecording();
       } catch (e) {
         console.error('Auto-stop failed:', e);
+        
+        // Force cleanup on auto-stop failure
+        setState(prev => ({
+          ...prev,
+          isRecording: false,
+          isPaused: false,
+          duration: 0,
+          currentMeeting: undefined,
+        }));
+        
         return null;
       }
     };

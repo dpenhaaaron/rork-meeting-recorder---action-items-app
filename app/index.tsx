@@ -25,19 +25,27 @@ export default function SplashScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  }, [slideAnim, fadeAnim]);
 
-    const timer = setTimeout(() => {
-      if (!isLoading) {
-        if (isAuthenticated) {
-          router.replace('/(tabs)/home');
-        } else {
-          router.replace('/signin');
+  useEffect(() => {
+    if (!isLoading) {
+      const timer = setTimeout(() => {
+        try {
+          if (isAuthenticated) {
+            router.replace('/(tabs)/home');
+          } else {
+            router.replace('/signin');
+          }
+        } catch (error) {
+          console.error('Navigation error:', error);
+          // Fallback navigation
+          router.push('/signin');
         }
-      }
-    }, 3000);
+      }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [isAuthenticated, isLoading, slideAnim, fadeAnim]);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, isLoading]);
 
   return (
     <LinearGradient

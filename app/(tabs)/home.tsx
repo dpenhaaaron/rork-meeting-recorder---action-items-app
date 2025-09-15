@@ -65,7 +65,7 @@ export default function HomeScreen() {
         );
         
         // Start processing automatically with better error handling
-        setTimeout(async () => {
+        const processingTimer = setTimeout(async () => {
           try {
             console.log('Starting auto-processing for meeting:', meetingId);
             await processMeeting(meetingId);
@@ -76,6 +76,9 @@ export default function HomeScreen() {
             // The error will be visible in the meetings list
           }
         }, 2000); // Increased delay to ensure recording is fully saved
+        
+        // Cleanup timer on unmount
+        return () => clearTimeout(processingTimer);
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
@@ -88,19 +91,25 @@ export default function HomeScreen() {
 
   // Show warning when approaching 15-minute limit
   React.useEffect(() => {
-    if (state.isRecording && state.duration === 10 * 60) { // 10 minutes
-      Alert.alert(
-        'Recording Limit Warning',
-        'Your recording will automatically stop in 5 minutes (15-minute limit). Consider stopping and starting a new recording if needed.',
-        [{ text: 'OK' }]
-      );
-    }
-    if (state.isRecording && state.duration === 14 * 60) { // 14 minutes
-      Alert.alert(
-        'One Minute Warning',
-        'Your recording will stop in 1 minute. Please prepare to wrap up.',
-        [{ text: 'OK' }]
-      );
+    if (!state.isRecording) return;
+    
+    try {
+      if (state.duration === 10 * 60) { // 10 minutes
+        Alert.alert(
+          'Recording Limit Warning',
+          'Your recording will automatically stop in 5 minutes (15-minute limit). Consider stopping and starting a new recording if needed.',
+          [{ text: 'OK' }]
+        );
+      }
+      if (state.duration === 14 * 60) { // 14 minutes
+        Alert.alert(
+          'One Minute Warning',
+          'Your recording will stop in 1 minute. Please prepare to wrap up.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.warn('Alert error:', error);
     }
   }, [state.duration, state.isRecording]);
 
@@ -259,25 +268,34 @@ export default function HomeScreen() {
                   
                   const handleMeetingPress = () => {
                     if (meeting.status === 'error') {
-                      Alert.alert(
-                        'Processing Failed',
-                        `The meeting "${meeting.title}" failed to process. Would you like to retry?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { 
-                            text: 'Retry', 
-                            onPress: () => {
-                              retryProcessing(meeting.id).catch((error) => {
-                                Alert.alert(
-                                  'Retry Failed',
-                                  'Processing failed again. Please check your internet connection and try again later.',
-                                  [{ text: 'OK' }]
-                                );
-                              });
+                      try {
+                        Alert.alert(
+                          'Processing Failed',
+                          `The meeting "${meeting.title}" failed to process. Would you like to retry?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { 
+                              text: 'Retry', 
+                              onPress: () => {
+                                retryProcessing(meeting.id).catch((error) => {
+                                  console.error('Retry processing error:', error);
+                                  try {
+                                    Alert.alert(
+                                      'Retry Failed',
+                                      'Processing failed again. Please check your internet connection and try again later.',
+                                      [{ text: 'OK' }]
+                                    );
+                                  } catch (alertError) {
+                                    console.error('Alert error:', alertError);
+                                  }
+                                });
+                              }
                             }
-                          }
-                        ]
-                      );
+                          ]
+                        );
+                      } catch (error) {
+                        console.error('Alert error:', error);
+                      }
                     }
                   };
                   
