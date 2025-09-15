@@ -4,7 +4,9 @@ import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Clock, Users, FileText } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRecording } from '@/hooks/recording-store';
+import { Meeting } from '@/types/meeting';
 import ConsentBanner from '@/components/ConsentBanner';
 import RecordingControls from '@/components/RecordingControls';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
@@ -58,7 +60,7 @@ export default function HomeScreen() {
       if (meetingId) {
         Alert.alert(
           'Recording Saved', 
-          'Processing will start automatically. You can monitor status in Recent Meetings.',
+          'Your recording has been saved. Processing will begin shortly.',
           [
             { text: 'OK', style: 'default' }
           ]
@@ -68,14 +70,38 @@ export default function HomeScreen() {
         const processingTimer = setTimeout(async () => {
           try {
             console.log('Starting auto-processing for meeting:', meetingId);
-            await processMeeting(meetingId);
-            console.log('Auto-processing completed successfully');
+            
+            // Reload meetings to ensure we have the latest state with audio URI
+            const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+            const meeting = currentMeetings.find((m: Meeting) => m.id === meetingId);
+            
+            if (meeting && meeting.audioUri) {
+              console.log('Meeting ready for processing:', {
+                id: meeting.id,
+                audioUri: meeting.audioUri,
+                status: meeting.status
+              });
+              
+              await processMeeting(meetingId);
+              console.log('Auto-processing completed successfully');
+            } else {
+              console.error('Meeting not ready for processing:', {
+                found: !!meeting,
+                audioUri: meeting?.audioUri
+              });
+            }
           } catch (error) {
             console.error('Auto-processing failed:', error);
-            // Don't show alert here as user might have navigated away
-            // The error will be visible in the meetings list
+            // Update meeting status to error so user can retry
+            const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+            const updatedMeetings = currentMeetings.map((m: Meeting) => 
+              m.id === meetingId 
+                ? { ...m, status: 'error' as const }
+                : m
+            );
+            await AsyncStorage.setItem('meetings', JSON.stringify(updatedMeetings));
           }
-        }, 2000); // Increased delay to ensure recording is fully saved
+        }, 3000); // Increased delay to ensure recording is fully saved
         
         // Cleanup timer on unmount
         return () => clearTimeout(processingTimer);

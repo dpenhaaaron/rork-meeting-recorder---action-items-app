@@ -165,9 +165,16 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
     
     // Enhanced validation for mobile files
     if ('uri' in request.audio) {
-      if (!request.audio.uri || request.audio.uri.trim() === '') {
-        throw new Error('Audio file URI is missing or empty');
+      // Check for empty or invalid URI
+      if (!request.audio.uri || typeof request.audio.uri !== 'string') {
+        throw new Error('Audio file URI is missing or invalid');
       }
+      
+      const trimmedUri = request.audio.uri.trim();
+      if (trimmedUri === '' || trimmedUri === 'undefined' || trimmedUri === 'null') {
+        throw new Error('Audio file URI is empty or invalid: "' + request.audio.uri + '"');
+      }
+      
       if (!request.audio.name || request.audio.name.trim() === '') {
         throw new Error('Audio file name is missing');
       }
