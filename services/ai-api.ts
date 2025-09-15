@@ -152,43 +152,76 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
     console.log('Starting transcription request...');
     console.log('Audio file info:', request.audio);
     
-    // Validate audio file before sending
-    if ('size' in request.audio && request.audio.size === 0) {
-      throw new Error('Audio file is empty');
+    // Enhanced validation for audio file
+    if ('size' in request.audio) {
+      if (request.audio.size === 0) {
+        throw new Error('Audio file is empty (0 bytes)');
+      }
+      if (request.audio.size < 1000) { // Less than 1KB
+        throw new Error('Audio file is too small (less than 1KB)');
+      }
+      console.log('Web audio file size:', request.audio.size, 'bytes');
     }
     
-    // Additional validation for mobile files
-    if ('uri' in request.audio && !request.audio.uri) {
-      throw new Error('Audio file URI is missing');
+    // Enhanced validation for mobile files
+    if ('uri' in request.audio) {
+      if (!request.audio.uri || request.audio.uri.trim() === '') {
+        throw new Error('Audio file URI is missing or empty');
+      }
+      if (!request.audio.name || request.audio.name.trim() === '') {
+        throw new Error('Audio file name is missing');
+      }
+      if (!request.audio.type || request.audio.type.trim() === '') {
+        throw new Error('Audio file type is missing');
+      }
+      console.log('Mobile audio file details:', {
+        uri: request.audio.uri,
+        name: request.audio.name,
+        type: request.audio.type
+      });
     }
     
     const formData = new FormData();
     
-    // Handle different audio formats properly
-    if ('uri' in request.audio) {
-      // Mobile platform - properly format the file object
-      const audioFile = {
-        uri: request.audio.uri,
-        name: request.audio.name,
-        type: request.audio.type
-      } as any;
-      formData.append('audio', audioFile);
-      console.log('Appending mobile audio file:', audioFile);
-    } else {
-      // Web platform - File object
-      formData.append('audio', request.audio as File);
-      console.log('Appending web audio file');
-    }
-    
-    if (request.language) {
-      formData.append('language', request.language);
+    try {
+      // Handle different audio formats properly
+      if ('uri' in request.audio) {
+        // Mobile platform - properly format the file object
+        const audioFile = {
+          uri: request.audio.uri,
+          name: request.audio.name,
+          type: request.audio.type
+        } as any;
+        
+        console.log('Preparing mobile audio file for upload:', audioFile);
+        formData.append('audio', audioFile);
+      } else {
+        // Web platform - File object
+        console.log('Preparing web audio file for upload:', {
+          name: request.audio.name,
+          size: request.audio.size,
+          type: request.audio.type
+        });
+        formData.append('audio', request.audio as File);
+      }
+      
+      if (request.language) {
+        formData.append('language', request.language);
+        console.log('Language specified:', request.language);
+      }
+    } catch (formError) {
+      console.error('Failed to prepare FormData:', formError);
+      throw new Error('Failed to prepare audio file for upload');
     }
 
     console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
     
     // Add timeout for transcription requests
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minutes
+    const timeoutId = setTimeout(() => {
+      console.log('Transcription request timed out after 15 minutes');
+      controller.abort();
+    }, 15 * 60 * 1000); // 15 minutes
     
     try {
       const response = await fetch(`${AI_BASE_URL}/stt/transcribe/`, {
@@ -198,13 +231,20 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       });
       
       clearTimeout(timeoutId);
-      console.log('Transcription response status:', response.status, response.statusText);
+      console.log('Transcription response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
 
       if (!response.ok) {
         let errorText = 'Unknown error';
+        let errorDetails = '';
+        
         try {
           const errorResponse = await response.text();
           errorText = errorResponse;
+          errorDetails = errorResponse;
           
           // Try to parse as JSON to get more detailed error info
           try {
@@ -213,6 +253,8 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
               errorText = errorJson.error;
             } else if (errorJson.message) {
               errorText = errorJson.message;
+            } else if (errorJson.detail) {
+              errorText = errorJson.detail;
             }
           } catch {
             // Keep the raw text if it's not JSON
@@ -224,22 +266,41 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         console.error('Transcription API error:', {
           status: response.status,
           statusText: response.statusText,
-          error: errorText
+          error: errorText,
+          fullResponse: errorDetails
         });
         
-        throw new Error(`Transcription failed (${response.status}): ${errorText}`);
+        // Provide more specific error messages
+        if (response.status === 400) {
+          throw new Error(`Invalid audio file format or corrupted file: ${errorText}`);
+        } else if (response.status === 413) {
+          throw new Error('Audio file is too large. Maximum size is 25MB.');
+        } else if (response.status === 415) {
+          throw new Error('Unsupported audio format. Please use MP3, WAV, M4A, or WebM.');
+        } else if (response.status >= 500) {
+          throw new Error('Transcription service is temporarily unavailable. Please try again later.');
+        } else {
+          throw new Error(`Transcription failed (${response.status}): ${errorText}`);
+        }
       }
 
       let result;
       try {
-        result = await response.json();
+        const responseText = await response.text();
+        console.log('Raw transcription response:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
+        result = JSON.parse(responseText);
       } catch (parseError) {
         console.error('Failed to parse transcription response as JSON:', parseError);
-        throw new Error('Invalid transcription response: response is not valid JSON');
+        throw new Error('Invalid transcription response: server returned invalid JSON');
       }
       
-      // Log the actual response for debugging
-      console.log('Transcription API response keys:', Object.keys(result || {}));
+      // Log the actual response structure for debugging
+      console.log('Transcription API response structure:', {
+        keys: Object.keys(result || {}),
+        hasText: 'text' in (result || {}),
+        hasTranscription: 'transcription' in (result || {}),
+        hasTranscript: 'transcript' in (result || {})
+      });
       
       // Validate response structure with more detailed error info
       if (!result || typeof result !== 'object') {
@@ -254,19 +315,29 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       if (result.text && typeof result.text === 'string') {
         transcriptionText = result.text;
         language = result.language || 'en';
+        console.log('Found transcription in "text" field');
       } else if (result.transcription && typeof result.transcription === 'string') {
         // Alternative response format
         transcriptionText = result.transcription;
         language = result.language || result.detected_language || 'en';
+        console.log('Found transcription in "transcription" field');
       } else if (result.transcript && typeof result.transcript === 'string') {
         // Another alternative response format
         transcriptionText = result.transcript;
         language = result.language || result.detected_language || 'en';
+        console.log('Found transcription in "transcript" field');
       } else {
         console.error('No valid text field found in response:', result);
         console.error('Available fields:', Object.keys(result));
-        throw new Error('Invalid transcription response: missing or invalid text field');
+        console.error('Field types:', Object.keys(result).map(key => `${key}: ${typeof result[key]}`));
+        throw new Error('Invalid transcription response: no valid text field found. Available fields: ' + Object.keys(result).join(', '));
       }
+      
+      console.log('Transcription extracted:', {
+        length: transcriptionText.length,
+        language: language,
+        preview: transcriptionText.substring(0, 100) + (transcriptionText.length > 100 ? '...' : '')
+      });
       
       // Validate transcription text
       const validatedText = validateTranscript(transcriptionText);
@@ -277,9 +348,17 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       };
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Transcription timed out. The audio file may be too long (max 15 minutes). Please try with a shorter recording.');
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Transcription timed out after 15 minutes. Please try with a shorter recording.');
+        }
+        if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+          throw new Error('Network error: Please check your internet connection and try again.');
+        }
       }
+      
+      console.error('Transcription request failed:', error);
       throw error;
     }
   });

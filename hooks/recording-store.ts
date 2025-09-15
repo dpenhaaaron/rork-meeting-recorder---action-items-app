@@ -458,31 +458,69 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       throw new Error(`Meeting with ID ${meetingId} not found`);
     }
     
+    console.log('Meeting found:', {
+      id: meeting.id,
+      title: meeting.title,
+      audioUri: meeting.audioUri,
+      duration: meeting.duration,
+      status: meeting.status
+    });
+    
     let hasAudio = false;
+    let audioFileSize = 0;
     
     if (Platform.OS === 'web') {
       if (meeting.audioUri && meeting.audioUri.startsWith('indexeddb://')) {
-        const blob = await getAudioBlob(meetingId);
-        hasAudio = blob !== null && blob.size > 0;
+        try {
+          const blob = await getAudioBlob(meetingId);
+          hasAudio = blob !== null && blob.size > 0;
+          audioFileSize = blob?.size || 0;
+          console.log('Web audio blob check:', { hasBlob: !!blob, size: audioFileSize });
+        } catch (error) {
+          console.error('Failed to get audio blob from IndexedDB:', error);
+          hasAudio = false;
+        }
+      } else {
+        console.log('No valid web audio URI found:', meeting.audioUri);
       }
     } else {
       if (meeting.audioUri && meeting.audioUri.length > 0) {
         try {
           const fileInfo = await FileSystem.getInfoAsync(meeting.audioUri);
           hasAudio = fileInfo.exists && ('size' in fileInfo ? (fileInfo.size ?? 0) : 0) > 0;
-        } catch {
+          audioFileSize = 'size' in fileInfo ? (fileInfo.size ?? 0) : 0;
+          console.log('Native audio file check:', {
+            exists: fileInfo.exists,
+            size: audioFileSize,
+            uri: meeting.audioUri
+          });
+        } catch (error) {
+          console.error('Failed to check native audio file:', error);
           hasAudio = false;
         }
+      } else {
+        console.log('No valid native audio URI found:', meeting.audioUri);
       }
     }
     
     if (!hasAudio) {
       console.error(`Audio source missing and no artifacts available, cannot process: ${meetingId}`);
-      throw new Error('Audio file not found and no prior artifacts available. Please re-record this meeting.');
+      console.error('Audio validation failed:', {
+        platform: Platform.OS,
+        audioUri: meeting.audioUri,
+        audioFileSize,
+        hasAudio
+      });
+      throw new Error('Audio file not found or is empty. The recording may have failed. Please try recording again.');
+    }
+    
+    if (audioFileSize < 1000) { // Less than 1KB
+      console.error(`Audio file too small: ${audioFileSize} bytes`);
+      throw new Error('Audio file is too small (less than 1KB). The recording may be corrupted. Please try recording again.');
     }
 
     try {
-      setProcessingProgress({ stage: 'transcribing', progress: 0, message: 'Starting processing...' });
+      setProcessingProgress({ stage: 'transcribing', progress: 0, message: 'Preparing audio for transcription...' });
       
       let audioFile: File | { uri: string; name: string; type: string };
       
@@ -491,15 +529,33 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         if (!blob || blob.size === 0) {
           throw new Error('Audio file not found in browser storage.');
         }
+        
+        console.log('Creating web audio file:', {
+          blobSize: blob.size,
+          blobType: blob.type
+        });
+        
         audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
       } else {
         const fileInfo = await FileSystem.getInfoAsync(meeting.audioUri);
-        if (!fileInfo.exists || fileInfo.size === 0) {
+        if (!fileInfo.exists) {
           throw new Error('Audio file not found on device.');
+        }
+        
+        const fileSize = 'size' in fileInfo ? (fileInfo.size ?? 0) : 0;
+        if (fileSize === 0) {
+          throw new Error('Audio file is empty.');
         }
         
         const uriParts = meeting.audioUri.split('.');
         const fileType = uriParts[uriParts.length - 1];
+        
+        console.log('Creating native audio file:', {
+          uri: meeting.audioUri,
+          fileSize,
+          fileType
+        });
+        
         audioFile = {
           uri: meeting.audioUri,
           name: `recording.${fileType}`,
@@ -509,6 +565,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
       const shouldUseStreaming = meeting.duration >= 300; // 5 minutes
+      
+      console.log('Starting transcription with:', {
+        shouldUseStreaming,
+        duration: meeting.duration,
+        attendeeCount: attendeeNames.length
+      });
       
       const result = shouldUseStreaming 
         ? await processFullMeetingStreaming(
@@ -524,6 +586,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
             attendeeNames,
             (progress) => setProcessingProgress(progress)
           );
+
+      console.log('Processing completed successfully:', {
+        transcriptLength: result.transcript.length,
+        actionItemsCount: result.artifacts.action_items.length,
+        decisionsCount: result.artifacts.decisions.length
+      });
 
       const latestMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
       const updatedMeetings = latestMeetings.map((m: Meeting) => 
@@ -558,10 +626,17 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       setProcessingProgress(null);
       
       if (error instanceof Error) {
-        if (error.message.includes('Invalid transcript')) {
-          throw new Error('The recording appears to be empty or too short. Please try recording again.');
-        } else if (error.message.includes('transcribe')) {
+        console.error('Processing error details:', {
+          message: error.message,
+          stack: error.stack
+        });
+        
+        if (error.message.includes('Invalid transcript') || error.message.includes('too short')) {
+          throw new Error('The recording appears to be empty or too short. Please try recording again with clear audio.');
+        } else if (error.message.includes('transcribe') || error.message.includes('Audio file')) {
           throw new Error('Failed to transcribe audio. Please check your internet connection and try again.');
+        } else if (error.message.includes('Network') || error.message.includes('fetch')) {
+          throw new Error('Network error occurred. Please check your internet connection and try again.');
         }
       }
       

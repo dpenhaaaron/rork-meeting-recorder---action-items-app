@@ -64,15 +64,25 @@ export default function HomeScreen() {
           ]
         );
         
-        // Start processing automatically
-        setTimeout(() => {
-          processMeeting(meetingId).catch((error) => {
+        // Start processing automatically with better error handling
+        setTimeout(async () => {
+          try {
+            console.log('Starting auto-processing for meeting:', meetingId);
+            await processMeeting(meetingId);
+            console.log('Auto-processing completed successfully');
+          } catch (error) {
             console.error('Auto-processing failed:', error);
-          });
-        }, 1000);
+            // Don't show alert here as user might have navigated away
+            // The error will be visible in the meetings list
+          }
+        }, 2000); // Increased delay to ensure recording is fully saved
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to stop recording');
+      console.error('Failed to stop recording:', error);
+      Alert.alert(
+        'Recording Error', 
+        error instanceof Error ? error.message : 'Failed to stop recording. Please try again.'
+      );
     }
   };
 
