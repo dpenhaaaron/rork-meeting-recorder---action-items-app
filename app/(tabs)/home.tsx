@@ -234,6 +234,30 @@ export default function HomeScreen() {
                     multiline
                   />
                 </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Language</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageSelector}>
+                    {supportedLanguages.map((lang) => (
+                      <TouchableOpacity
+                        key={lang.code}
+                        style={[
+                          styles.languageOption,
+                          selectedLanguage === lang.code && styles.selectedLanguageOption
+                        ]}
+                        onPress={() => setSelectedLanguage(lang.code)}
+                      >
+                        <Text style={styles.languageFlag}>{lang.flag}</Text>
+                        <Text style={[
+                          styles.languageName,
+                          selectedLanguage === lang.code && styles.selectedLanguageName
+                        ]}>
+                          {lang.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
 
                 <View style={styles.formActions}>
                   <TouchableOpacity 
@@ -262,8 +286,24 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 
                 <Text style={styles.quickStartText}>
-                  Record meetings and get polished summaries, action items, and email drafts after processing
+                  AI-powered meeting assistant with real-time transcription, smart summaries, and multi-language support
                 </Text>
+                
+                {/* Feature Highlights */}
+                <View style={styles.featureHighlights}>
+                  <View style={styles.featureItem}>
+                    <Languages size={20} color="#FF8C00" />
+                    <Text style={styles.featureText}>50+ Languages</Text>
+                  </View>
+                  <View style={styles.featureItem}>
+                    <Zap size={20} color="#FF8C00" />
+                    <Text style={styles.featureText}>Real-time AI</Text>
+                  </View>
+                  <View style={styles.featureItem}>
+                    <TrendingUp size={20} color="#FF8C00" />
+                    <Text style={styles.featureText}>Smart Insights</Text>
+                  </View>
+                </View>
               </View>
             )}
 
