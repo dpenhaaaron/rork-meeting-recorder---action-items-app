@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Share, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Share2, Download, Mail, Trash2, RefreshCw, FileText, Mic } from 'lucide-react-native';
+import { ArrowLeft, Share2, Download, Mail, Trash2, RefreshCw, FileText, Languages } from 'lucide-react-native';
 import { useRecording } from '@/hooks/recording-store';
 import MeetingInsights from '@/components/MeetingInsights';
-import LiveTranscript from '@/components/LiveTranscript';
+import MeetingTranslation from '@/components/MeetingTranslation';
 import { Meeting } from '@/types/meeting';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -15,7 +15,7 @@ export default function MeetingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { meetings, processMeeting, deleteMeeting, processingProgress } = useRecording();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [activeView, setActiveView] = useState<'insights' | 'transcript'>('insights');
+  const [activeView, setActiveView] = useState<'insights' | 'translation'>('insights');
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -498,12 +498,12 @@ export default function MeetingDetailScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.toggleButton, activeView === 'transcript' && styles.activeToggle]}
-            onPress={() => setActiveView('transcript')}
+            style={[styles.toggleButton, activeView === 'translation' && styles.activeToggle]}
+            onPress={() => setActiveView('translation')}
           >
-            <Mic size={16} color={activeView === 'transcript' ? '#FFFFFF' : '#6B7280'} />
-            <Text style={[styles.toggleText, activeView === 'transcript' && styles.activeToggleText]}>
-              Transcript
+            <Languages size={16} color={activeView === 'translation' ? '#FFFFFF' : '#6B7280'} />
+            <Text style={[styles.toggleText, activeView === 'translation' && styles.activeToggleText]}>
+              Translation
             </Text>
           </TouchableOpacity>
         </View>
@@ -515,11 +515,9 @@ export default function MeetingDetailScreen() {
             duration={meeting.duration}
             attendees={meeting.attendees.map(a => a.name)}
           />
-        ) : activeView === 'transcript' ? (
-          <LiveTranscript
-            isRecording={false}
-            duration={meeting.duration}
-            currentTranscript={meeting.transcript?.segments.map(s => s.text).join(' ')}
+        ) : activeView === 'translation' && meeting.artifacts ? (
+          <MeetingTranslation
+            artifacts={meeting.artifacts}
           />
         ) : (
           <View style={styles.emptyContainer}>

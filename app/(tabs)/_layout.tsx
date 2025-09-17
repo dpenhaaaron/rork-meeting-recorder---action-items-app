@@ -1,5 +1,5 @@
 import { Tabs, router } from "expo-router";
-import { Mic, Languages, Settings } from "lucide-react-native";
+import { Mic, FileText, Settings } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { useAuth } from "@/hooks/auth-store";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
@@ -50,10 +50,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="translate"
+        name="meetings"
         options={{
-          title: "Translate",
-          tabBarIcon: ({ color, size }) => <Languages color={color} size={size} />,
+          title: "Meetings",
+          tabBarIcon: ({ color, size }) => <FileText color={color} size={size} />,
         }}
       />
       <Tabs.Screen
