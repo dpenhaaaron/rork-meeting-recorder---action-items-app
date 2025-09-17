@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Clock, Users, FileText } from 'lucide-react-native';
+import { Plus, Clock, Users, FileText, Languages, Zap, TrendingUp } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRecording } from '@/hooks/recording-store';
@@ -29,6 +29,20 @@ export default function HomeScreen() {
   const [meetingTitle, setMeetingTitle] = useState('');
   const [attendees, setAttendees] = useState('');
   const [showConsent, setShowConsent] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+
+  const supportedLanguages = [
+    { code: 'en', name: 'English', flag: '🇺🇸' },
+    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
+    { code: 'fr', name: 'French', flag: '🇫🇷' },
+    { code: 'de', name: 'German', flag: '🇩🇪' },
+    { code: 'it', name: 'Italian', flag: '🇮🇹' },
+    { code: 'pt', name: 'Portuguese', flag: '🇵🇹' },
+    { code: 'ru', name: 'Russian', flag: '🇷🇺' },
+    { code: 'ja', name: 'Japanese', flag: '🇯🇵' },
+    { code: 'ko', name: 'Korean', flag: '🇰🇷' },
+    { code: 'zh', name: 'Chinese', flag: '🇨🇳' },
+  ];
 
   const handleStartRecording = () => {
     if (!consentGiven) {
@@ -628,5 +642,50 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#DC2626',
     textTransform: 'none',
+  },
+  languageSelector: {
+    marginTop: 8,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+  },
+  selectedLanguageOption: {
+    borderColor: '#FF8C00',
+    backgroundColor: '#FFF7ED',
+  },
+  languageFlag: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  languageName: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  selectedLanguageName: {
+    color: '#FF8C00',
+    fontWeight: '500',
+  },
+  featureHighlights: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 24,
+    paddingHorizontal: 20,
+  },
+  featureItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  featureText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });
