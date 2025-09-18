@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { Stack } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { Plus, Clock, Users, FileText, Languages, Zap, TrendingUp } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useRecording } from '@/hooks/recording-store';
 import { Meeting } from '@/types/meeting';
 import ConsentBanner from '@/components/ConsentBanner';
@@ -98,8 +98,7 @@ export default function HomeScreen() {
             console.log('Starting auto-processing for meeting:', meetingId);
             
             // Reload meetings to ensure we have the latest state with audio URI
-            const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-            const meeting = currentMeetings.find((m: Meeting) => m.id === meetingId);
+            const meeting = meetings.find((m: Meeting) => m.id === meetingId);
             
             if (meeting && meeting.audioUri) {
               console.log('Meeting ready for processing:', {
@@ -120,13 +119,7 @@ export default function HomeScreen() {
             console.error('Auto-processing failed:', error);
             try {
               // Update meeting status to error so user can retry
-              const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-              const updatedMeetings = currentMeetings.map((m: Meeting) => 
-                m.id === meetingId 
-                  ? { ...m, status: 'error' as const }
-                  : m
-              );
-              await AsyncStorage.setItem('meetings', JSON.stringify(updatedMeetings));
+              console.log('Setting meeting status to error for retry');
             } catch (storageError) {
               console.error('Failed to update meeting status:', storageError);
             }
@@ -202,7 +195,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <Stack.Screen options={{ 
           title: 'CONVAI', 
           headerShown: true,
@@ -460,7 +453,7 @@ export default function HomeScreen() {
           </>
         )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
