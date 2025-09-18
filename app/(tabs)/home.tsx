@@ -37,7 +37,7 @@ export default function HomeScreen() {
   const [meetingTitle, setMeetingTitle] = useState('');
   const [attendees, setAttendees] = useState('');
   const [showConsent, setShowConsent] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
 
   const supportedLanguages = [
     { code: 'en', name: 'English', flag: '🇺🇸' },
