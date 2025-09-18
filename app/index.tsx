@@ -31,6 +31,7 @@ export default function SplashScreen() {
     if (!isLoading) {
       const timer = setTimeout(() => {
         try {
+          console.log('Splash screen navigation:', { isAuthenticated, isLoading });
           if (isAuthenticated) {
             router.replace('/(tabs)/home');
           } else {
@@ -41,7 +42,7 @@ export default function SplashScreen() {
           // Fallback navigation
           router.push('/signin');
         }
-      }, 3000);
+      }, 2000); // Reduced from 3000 to 2000
 
       return () => clearTimeout(timer);
     }

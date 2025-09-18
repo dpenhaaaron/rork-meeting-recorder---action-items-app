@@ -210,6 +210,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   // useEffect hook - always after all useCallback hooks
   useEffect(() => {
+    console.log('AuthProvider: Loading stored auth...');
     loadStoredAuth();
   }, [loadStoredAuth]);
 

@@ -12,6 +12,8 @@ import RecordingControls from '@/components/RecordingControls';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
 
 export default function HomeScreen() {
+  console.log('HomeScreen: Component mounted');
+  
   const { 
     state, 
     meetings, 
@@ -24,6 +26,12 @@ export default function HomeScreen() {
     processMeeting,
     retryProcessing 
   } = useRecording();
+  
+  console.log('HomeScreen: Recording state:', { 
+    isRecording: state.isRecording, 
+    meetingsCount: meetings.length,
+    consentGiven 
+  });
   
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');

@@ -157,6 +157,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   useEffect(() => {
+    console.log('RootLayout mounted - App is starting');
     const timer = setTimeout(() => {
       SplashScreen.hideAsync().catch(console.warn);
     }, 100);
