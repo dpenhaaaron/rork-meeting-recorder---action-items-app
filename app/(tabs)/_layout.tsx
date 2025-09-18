@@ -1,20 +1,24 @@
 import { Tabs, router } from "expo-router";
 import { Mic, FileText, Settings } from "lucide-react-native";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/auth-store";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isMounted && !isLoading && !isAuthenticated) {
       router.replace('/signin');
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, isMounted]);
 
-  if (isLoading) {
+  if (!isMounted || isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FF8C00" />
@@ -36,9 +40,6 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E5E7EB',
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
         },
       }}
     >

@@ -8,10 +8,11 @@ import { useRecording } from '@/hooks/recording-store';
 import { Meeting } from '@/types/meeting';
 
 export default function MeetingsScreen() {
-  const { meetings, deleteMeeting, processMeeting, retryProcessing, processingProgress } = useRecording();
+  const { meetings, deleteMeeting, processMeeting, retryProcessing, processingProgress, isHydrated } = useRecording();
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [processingMeetingId, setProcessingMeetingId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
+  const [isMounted, setIsMounted] = useState(false);
 
   const gradientColors = [
     ['#FF6B6B', '#FF8E53', '#FF6B9D'] as const, // Coral to Pink
@@ -39,6 +40,12 @@ export default function MeetingsScreen() {
   };
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || !isHydrated) return;
+    
     const unprocessedMeeting = meetings.find(m => m.status === 'processing' && m.audioUri);
     if (unprocessedMeeting && !processingMeetingId) {
       console.log('Found unprocessed meeting, triggering processing:', unprocessedMeeting.id);
@@ -47,7 +54,7 @@ export default function MeetingsScreen() {
         handleProcessMeeting(unprocessedMeeting.id);
       }, 500);
     }
-  }, [meetings, processingMeetingId]);
+  }, [meetings, processingMeetingId, isMounted, isHydrated]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -331,7 +338,12 @@ export default function MeetingsScreen() {
           <Text style={styles.subtitle}>{meetings.length} total meetings</Text>
         </View>
 
-        {meetings.length === 0 ? (
+        {!isMounted || !isHydrated ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color="#FF8C00" />
+            <Text style={styles.emptyStateTitle}>Loading meetings...</Text>
+          </View>
+        ) : meetings.length === 0 ? (
           <View style={styles.emptyState}>
             <FileText size={64} color="#D1D5DB" />
             <Text style={styles.emptyStateTitle}>No meetings recorded</Text>

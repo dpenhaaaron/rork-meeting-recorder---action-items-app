@@ -1,37 +1,44 @@
-import React, { useEffect, useRef } from 'react';
-import { Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Text, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/auth-store';
 
-const { width } = Dimensions.get('window');
-
 export default function SplashScreen() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [isMounted, setIsMounted] = useState(false);
+  const { width } = useWindowDimensions();
   const slideAnim = useRef(new Animated.Value(-width)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Ensure component is mounted before starting animations
+    setIsMounted(true);
+    
     // Start the flowing animation
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 1500,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const timer = setTimeout(() => {
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [slideAnim, fadeAnim]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && isMounted) {
       const timer = setTimeout(() => {
         try {
-          console.log('Splash screen navigation:', { isAuthenticated, isLoading });
+          console.log('Splash screen navigation:', { isAuthenticated, isLoading, isMounted });
           if (isAuthenticated) {
             router.replace('/(tabs)/home');
           } else {
@@ -42,11 +49,16 @@ export default function SplashScreen() {
           // Fallback navigation
           router.push('/signin');
         }
-      }, 2000); // Reduced from 3000 to 2000
+      }, 2000);
 
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, isMounted]);
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!isMounted) {
+    return null;
+  }
 
   return (
     <LinearGradient

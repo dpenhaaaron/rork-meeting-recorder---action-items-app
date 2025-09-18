@@ -31,6 +31,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isLoading: true,
     isAuthenticated: false,
   });
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // All useCallback hooks defined in consistent order
   const loadStoredAuth = useCallback(async () => {
@@ -211,18 +212,25 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   // useEffect hook - always after all useCallback hooks
   useEffect(() => {
     console.log('AuthProvider: Loading stored auth...');
-    loadStoredAuth();
+    // Add a small delay to ensure hydration is complete
+    const timer = setTimeout(() => {
+      setIsHydrated(true);
+      loadStoredAuth();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [loadStoredAuth]);
 
   const contextValue = useMemo(() => ({
     ...authState,
+    isLoading: authState.isLoading || !isHydrated,
     signUp,
     signIn,
     signOut,
     verifyEmail,
     sendPasswordReset,
     resendVerificationCode,
-  }), [authState, signUp, signIn, signOut, verifyEmail, sendPasswordReset, resendVerificationCode]);
+  }), [authState, isHydrated, signUp, signIn, signOut, verifyEmail, sendPasswordReset, resendVerificationCode]);
 
   return contextValue;
 });

@@ -20,6 +20,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [consentGiven, setConsentGiven] = useState<boolean>(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -843,8 +844,14 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   }, [saveMeetings, processMeeting]);
 
   useEffect(() => {
-    loadMeetings();
-    setupAudio();
+    // Add hydration delay to prevent SSR mismatch
+    const timer = setTimeout(() => {
+      setIsHydrated(true);
+      loadMeetings();
+      setupAudio();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [loadMeetings, setupAudio]);
 
   useEffect(() => {
@@ -902,9 +909,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
   return useMemo(() => ({
     state,
-    meetings,
+    meetings: isHydrated ? meetings : [],
     consentGiven,
     processingProgress,
+    isHydrated,
     setConsentGiven,
     startRecording,
     pauseRecording,
@@ -919,6 +927,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     meetings,
     consentGiven,
     processingProgress,
+    isHydrated,
     setConsentGiven,
     startRecording,
     pauseRecording,

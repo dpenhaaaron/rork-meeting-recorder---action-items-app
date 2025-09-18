@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, Component, ReactNode } from "react";
+import React, { useEffect, Component, ReactNode, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { RecordingProvider } from "@/hooks/recording-store";
@@ -131,6 +131,20 @@ const rootStyles = StyleSheet.create({
   },
 });
 
+const styles = StyleSheet.create({
+  hydrationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  hydrationText: {
+    fontSize: 16,
+    color: '#FF8C00',
+    fontWeight: 'bold',
+  },
+});
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -153,6 +167,29 @@ function RootLayoutNav() {
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
     </Stack>
   );
+}
+
+function HydrationWrapper({ children }: { children: ReactNode }) {
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    // Ensure hydration is complete before rendering
+    const timer = setTimeout(() => {
+      setIsHydrated(true);
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!isHydrated) {
+    return (
+      <View style={styles.hydrationContainer}>
+        <Text style={styles.hydrationText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 export default function RootLayout() {
@@ -202,17 +239,19 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <RecordingProvider>
-              <GestureHandlerRootView style={rootStyles.gestureHandler}>
-                <RootLayoutNav />
-              </GestureHandlerRootView>
-            </RecordingProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </trpc.Provider>
+      <HydrationWrapper>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <RecordingProvider>
+                <GestureHandlerRootView style={rootStyles.gestureHandler}>
+                  <RootLayoutNav />
+                </GestureHandlerRootView>
+              </RecordingProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </HydrationWrapper>
     </ErrorBoundary>
   );
 }
