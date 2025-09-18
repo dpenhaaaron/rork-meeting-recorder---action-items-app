@@ -98,10 +98,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const setupAudio = useCallback(async () => {
     try {
       if (Platform.OS !== 'web') {
-        await Audio.requestPermissionsAsync();
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Audio permission not granted');
+          return;
+        }
+        
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
         });
         
         const dirInfo = await FileSystem.getInfoAsync(RECORDINGS_DIR);
@@ -208,6 +214,25 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     }
 
     try {
+      // Clean up any existing recording first
+      if (state.isRecording) {
+        console.warn('Recording already in progress, cleaning up...');
+        
+        // Force cleanup without calling stopRecording to avoid circular dependency
+        if (durationInterval.current) {
+          clearInterval(durationInterval.current);
+          durationInterval.current = null;
+        }
+        
+        setState(prev => ({
+          ...prev,
+          isRecording: false,
+          isPaused: false,
+          duration: 0,
+          currentMeeting: undefined,
+        }));
+      }
+
       const meetingId = Date.now().toString();
       const newMeeting: Meeting = {
         id: meetingId,
@@ -241,7 +266,18 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
         mediaRecorder.start(1000);
       } else {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true });
+        // Check permissions again before recording
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Microphone permission is required to record audio');
+        }
+
+        await Audio.setAudioModeAsync({ 
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+        });
+        
         const recording = new Audio.Recording();
         await recording.prepareToRecordAsync({
           android: {
@@ -286,6 +322,15 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
       durationInterval.current = setInterval(() => {
         setState(prev => {
+          if (!prev.isRecording) {
+            // Clear interval if recording stopped
+            if (durationInterval.current) {
+              clearInterval(durationInterval.current);
+              durationInterval.current = null;
+            }
+            return prev;
+          }
+          
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
@@ -294,7 +339,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
             }
-            stopRecordingRef.current?.();
+            // Use setTimeout to avoid blocking the state update
+            setTimeout(() => {
+              stopRecordingRef.current?.().catch(console.error);
+            }, 100);
           }
           
           return {
@@ -306,9 +354,24 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
     } catch (error) {
       console.error('Failed to start recording:', error);
+      
+      // Clean up on error
+      setState(prev => ({
+        ...prev,
+        isRecording: false,
+        isPaused: false,
+        duration: 0,
+        currentMeeting: undefined,
+      }));
+      
+      if (durationInterval.current) {
+        clearInterval(durationInterval.current);
+        durationInterval.current = null;
+      }
+      
       throw error;
     }
-  }, [consentGiven, saveMeetings]);
+  }, [consentGiven, saveMeetings, state.isRecording]);
 
   const pauseRecording = useCallback(async () => {
     try {
@@ -326,6 +389,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
     } catch (error) {
       console.error('Failed to pause recording:', error);
+      // Don't throw error for pause failures, just log it
     }
   }, []);
 
@@ -341,6 +405,15 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       
       durationInterval.current = setInterval(() => {
         setState(prev => {
+          if (!prev.isRecording) {
+            // Clear interval if recording stopped
+            if (durationInterval.current) {
+              clearInterval(durationInterval.current);
+              durationInterval.current = null;
+            }
+            return prev;
+          }
+          
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
@@ -349,7 +422,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
             }
-            stopRecordingRef.current?.();
+            // Use setTimeout to avoid blocking the state update
+            setTimeout(() => {
+              stopRecordingRef.current?.().catch(console.error);
+            }, 100);
           }
           
           return {
@@ -760,6 +836,11 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         console.error('Auto-stop failed:', e);
         
         // Force cleanup on auto-stop failure
+        if (durationInterval.current) {
+          clearInterval(durationInterval.current);
+          durationInterval.current = null;
+        }
+        
         setState(prev => ({
           ...prev,
           isRecording: false,
@@ -772,6 +853,33 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
     };
   }, [stopRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (durationInterval.current) {
+        clearInterval(durationInterval.current);
+        durationInterval.current = null;
+      }
+      
+      // Clean up recording resources
+      if (Platform.OS === 'web') {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (e) {
+              console.warn('Failed to stop track on cleanup:', e);
+            }
+          });
+        }
+      } else {
+        if (recordingRef.current) {
+          recordingRef.current.stopAndUnloadAsync().catch(console.warn);
+        }
+      }
+    };
+  }, []);
 
   return useMemo(() => ({
     state,

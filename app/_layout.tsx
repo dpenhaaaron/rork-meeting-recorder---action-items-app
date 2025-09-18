@@ -22,24 +22,54 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    console.error('Error Boundary - getDerivedStateFromError:', error);
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('App Error Boundary caught an error:', error, errorInfo);
+    console.error('App Error Boundary caught an error:', {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      errorBoundary: errorInfo.errorBoundary,
+      errorBoundaryStack: errorInfo.errorBoundaryStack
+    });
+    
+    // Log additional context for debugging
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      cause: error.cause,
+      timestamp: new Date().toISOString()
+    });
   }
 
   render() {
     if (this.state.hasError) {
+      const errorMessage = this.state.error?.message || 'Unknown error occurred';
+      const isRecordingError = errorMessage.toLowerCase().includes('recording') || 
+                              errorMessage.toLowerCase().includes('audio') ||
+                              errorMessage.toLowerCase().includes('microphone');
+      
       return (
         <View style={errorStyles.container}>
           <Text style={errorStyles.title}>Something went wrong</Text>
           <Text style={errorStyles.message}>
-            The app encountered an unexpected error. Please restart the app.
+            {isRecordingError 
+              ? 'There was an issue with audio recording. Please check your microphone permissions and try again.'
+              : 'The app encountered an unexpected error. Please restart the app.'}
           </Text>
+          {__DEV__ && (
+            <Text style={errorStyles.debugText}>
+              Error: {errorMessage}
+            </Text>
+          )}
           <TouchableOpacity 
             style={errorStyles.button}
-            onPress={() => this.setState({ hasError: false })}
+            onPress={() => {
+              console.log('User pressed Try Again button');
+              this.setState({ hasError: false, error: undefined });
+            }}
           >
             <Text style={errorStyles.buttonText}>Try Again</Text>
           </TouchableOpacity>
@@ -71,6 +101,16 @@ const errorStyles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 16,
+    fontFamily: 'monospace',
+    backgroundColor: '#FEF2F2',
+    padding: 8,
+    borderRadius: 4,
   },
   button: {
     backgroundColor: '#FF8C00',
@@ -121,7 +161,42 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(console.warn);
     }, 100);
     
-    return () => clearTimeout(timer);
+    // Global error handlers for unhandled promise rejections and errors
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('Unhandled Promise Rejection:', {
+        reason: event.reason,
+        promise: event.promise,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Prevent the default behavior (which would crash the app)
+      event.preventDefault();
+    };
+    
+    const handleError = (event: ErrorEvent) => {
+      console.error('Global Error Handler:', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error,
+        timestamp: new Date().toISOString()
+      });
+    };
+    
+    // Add global error listeners (web only)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('unhandledrejection', handleUnhandledRejection);
+      window.addEventListener('error', handleError);
+    }
+    
+    return () => {
+      clearTimeout(timer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+        window.removeEventListener('error', handleError);
+      }
+    };
   }, []);
 
   return (

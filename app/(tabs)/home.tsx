@@ -72,13 +72,17 @@ export default function HomeScreen() {
     try {
       const meetingId = await stopRecording();
       if (meetingId) {
-        Alert.alert(
-          'Recording Saved', 
-          'Your recording has been saved. Processing will begin shortly.',
-          [
-            { text: 'OK', style: 'default' }
-          ]
-        );
+        try {
+          Alert.alert(
+            'Recording Saved', 
+            'Your recording has been saved. Processing will begin shortly.',
+            [
+              { text: 'OK', style: 'default' }
+            ]
+          );
+        } catch (alertError) {
+          console.warn('Alert error:', alertError);
+        }
         
         // Start processing automatically with better error handling
         const processingTimer = setTimeout(async () => {
@@ -106,14 +110,18 @@ export default function HomeScreen() {
             }
           } catch (error) {
             console.error('Auto-processing failed:', error);
-            // Update meeting status to error so user can retry
-            const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-            const updatedMeetings = currentMeetings.map((m: Meeting) => 
-              m.id === meetingId 
-                ? { ...m, status: 'error' as const }
-                : m
-            );
-            await AsyncStorage.setItem('meetings', JSON.stringify(updatedMeetings));
+            try {
+              // Update meeting status to error so user can retry
+              const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+              const updatedMeetings = currentMeetings.map((m: Meeting) => 
+                m.id === meetingId 
+                  ? { ...m, status: 'error' as const }
+                  : m
+              );
+              await AsyncStorage.setItem('meetings', JSON.stringify(updatedMeetings));
+            } catch (storageError) {
+              console.error('Failed to update meeting status:', storageError);
+            }
           }
         }, 3000); // Increased delay to ensure recording is fully saved
         
@@ -122,10 +130,14 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
-      Alert.alert(
-        'Recording Error', 
-        error instanceof Error ? error.message : 'Failed to stop recording. Please try again.'
-      );
+      try {
+        Alert.alert(
+          'Recording Error', 
+          error instanceof Error ? error.message : 'Failed to stop recording. Please try again.'
+        );
+      } catch (alertError) {
+        console.error('Alert error:', alertError);
+      }
     }
   };
 
@@ -135,21 +147,29 @@ export default function HomeScreen() {
     
     try {
       if (state.duration === 10 * 60) { // 10 minutes
-        Alert.alert(
-          'Recording Limit Warning',
-          'Your recording will automatically stop in 5 minutes (15-minute limit). Consider stopping and starting a new recording if needed.',
-          [{ text: 'OK' }]
-        );
+        try {
+          Alert.alert(
+            'Recording Limit Warning',
+            'Your recording will automatically stop in 5 minutes (15-minute limit). Consider stopping and starting a new recording if needed.',
+            [{ text: 'OK' }]
+          );
+        } catch (alertError) {
+          console.warn('10-minute alert error:', alertError);
+        }
       }
       if (state.duration === 14 * 60) { // 14 minutes
-        Alert.alert(
-          'One Minute Warning',
-          'Your recording will stop in 1 minute. Please prepare to wrap up.',
-          [{ text: 'OK' }]
-        );
+        try {
+          Alert.alert(
+            'One Minute Warning',
+            'Your recording will stop in 1 minute. Please prepare to wrap up.',
+            [{ text: 'OK' }]
+          );
+        } catch (alertError) {
+          console.warn('1-minute alert error:', alertError);
+        }
       }
     } catch (error) {
-      console.warn('Alert error:', error);
+      console.warn('Duration check error:', error);
     }
   }, [state.duration, state.isRecording]);
 
@@ -366,7 +386,7 @@ export default function HomeScreen() {
                                       [{ text: 'OK' }]
                                     );
                                   } catch (alertError) {
-                                    console.error('Alert error:', alertError);
+                                    console.error('Retry alert error:', alertError);
                                   }
                                 });
                               }
@@ -374,7 +394,7 @@ export default function HomeScreen() {
                           ]
                         );
                       } catch (error) {
-                        console.error('Alert error:', error);
+                        console.error('Meeting press alert error:', error);
                       }
                     }
                   };

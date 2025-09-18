@@ -150,10 +150,27 @@ const splitTranscriptIntoChunks = (transcript: string): string[] => {
 export const transcribeAudio = async (request: TranscribeRequest): Promise<TranscribeResponse> => {
   return retryWithBackoff(async () => {
     console.log('Starting transcription request...');
-    console.log('Audio file info:', request.audio);
+    
+    // Validate request object
+    if (!request || typeof request !== 'object') {
+      throw new Error('Invalid transcription request: request object is missing or invalid');
+    }
+    
+    if (!request.audio) {
+      throw new Error('Invalid transcription request: audio file is missing');
+    }
+    
+    console.log('Audio file info:', {
+      hasSize: 'size' in request.audio,
+      hasUri: 'uri' in request.audio,
+      type: typeof request.audio
+    });
     
     // Enhanced validation for audio file
     if ('size' in request.audio) {
+      if (typeof request.audio.size !== 'number') {
+        throw new Error('Audio file size is not a valid number');
+      }
       if (request.audio.size === 0) {
         throw new Error('Audio file is empty (0 bytes)');
       }
@@ -175,11 +192,11 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         throw new Error('Audio file URI is empty or invalid: "' + request.audio.uri + '"');
       }
       
-      if (!request.audio.name || request.audio.name.trim() === '') {
-        throw new Error('Audio file name is missing');
+      if (!request.audio.name || typeof request.audio.name !== 'string' || request.audio.name.trim() === '') {
+        throw new Error('Audio file name is missing or invalid');
       }
-      if (!request.audio.type || request.audio.type.trim() === '') {
-        throw new Error('Audio file type is missing');
+      if (!request.audio.type || typeof request.audio.type !== 'string' || request.audio.type.trim() === '') {
+        throw new Error('Audio file type is missing or invalid');
       }
       console.log('Mobile audio file details:', {
         uri: request.audio.uri,
@@ -188,7 +205,14 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       });
     }
     
-    const formData = new FormData();
+    let formData: FormData;
+    
+    try {
+      formData = new FormData();
+    } catch (formDataError) {
+      console.error('Failed to create FormData:', formDataError);
+      throw new Error('Failed to create form data for upload');
+    }
     
     try {
       // Handle different audio formats properly
@@ -204,21 +228,25 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         formData.append('audio', audioFile);
       } else {
         // Web platform - File object
+        if (!(request.audio instanceof File)) {
+          throw new Error('Web audio must be a File object');
+        }
+        
         console.log('Preparing web audio file for upload:', {
           name: request.audio.name,
           size: request.audio.size,
           type: request.audio.type
         });
-        formData.append('audio', request.audio as File);
+        formData.append('audio', request.audio);
       }
       
-      if (request.language) {
-        formData.append('language', request.language);
+      if (request.language && typeof request.language === 'string' && request.language.trim()) {
+        formData.append('language', request.language.trim());
         console.log('Language specified:', request.language);
       }
     } catch (formError) {
       console.error('Failed to prepare FormData:', formError);
-      throw new Error('Failed to prepare audio file for upload');
+      throw new Error('Failed to prepare audio file for upload: ' + (formError instanceof Error ? formError.message : 'Unknown error'));
     }
 
     console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
@@ -291,14 +319,29 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         }
       }
 
-      let result;
+      let result: any;
+      let responseText: string;
+      
       try {
-        const responseText = await response.text();
+        responseText = await response.text();
+        if (!responseText || typeof responseText !== 'string') {
+          throw new Error('Empty or invalid response from server');
+        }
         console.log('Raw transcription response:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
+      } catch (textError) {
+        console.error('Failed to read response text:', textError);
+        throw new Error('Failed to read server response');
+      }
+      
+      try {
         result = JSON.parse(responseText);
+        if (!result || typeof result !== 'object') {
+          throw new Error('Response is not a valid JSON object');
+        }
       } catch (parseError) {
         console.error('Failed to parse transcription response as JSON:', parseError);
-        throw new Error('Invalid transcription response: server returned invalid JSON');
+        console.error('Response text that failed to parse:', responseText);
+        throw new Error('Invalid transcription response: server returned invalid JSON - ' + (parseError instanceof Error ? parseError.message : 'Unknown parsing error'));
       }
       
       // Log the actual response structure for debugging
