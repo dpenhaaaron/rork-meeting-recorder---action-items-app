@@ -163,7 +163,7 @@ export default function RootLayout() {
     }, 100);
     
     // Global error handlers for unhandled promise rejections and errors
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    const handleUnhandledRejection = (event: any) => {
       console.error('Unhandled Promise Rejection:', {
         reason: event.reason,
         promise: event.promise,
@@ -174,7 +174,7 @@ export default function RootLayout() {
       event.preventDefault();
     };
     
-    const handleError = (event: ErrorEvent) => {
+    const handleError = (event: any) => {
       console.error('Global Error Handler:', {
         message: event.message,
         filename: event.filename,

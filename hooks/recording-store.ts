@@ -244,6 +244,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       };
 
       if (Platform.OS === 'web') {
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+          throw new Error('Microphone is not available in this environment');
+        }
+        if (typeof window === 'undefined' || !("MediaRecorder" in window)) {
+          throw new Error('MediaRecorder API is not supported in this browser');
+        }
         const stream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
             echoCancellation: true,
@@ -259,12 +265,17 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         audioChunksRef.current = [];
 
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
+          if (event.data && typeof event.data.size === 'number' && event.data.size > 0) {
             audioChunksRef.current.push(event.data);
           }
         };
 
-        mediaRecorder.start(1000);
+        try {
+          mediaRecorder.start(1000);
+        } catch (e) {
+          console.error('Failed to start MediaRecorder:', e);
+          throw new Error('Failed to start recording. Please ensure your browser allows microphone access.');
+        }
       } else {
         // Check permissions again before recording
         const { status } = await Audio.requestPermissionsAsync();
@@ -514,6 +525,14 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
               resolve(null);
             }
           });
+        } else {
+          // Nothing to stop, ensure cleanup
+          if (streamRef.current) {
+            try {
+              streamRef.current.getTracks().forEach(t => t.stop());
+            } catch {}
+            streamRef.current = null;
+          }
         }
       } else {
         if (recordingRef.current) {
