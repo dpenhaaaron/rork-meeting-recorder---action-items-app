@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { Meeting, RecordingState, MeetingArtifacts } from '@/types/meeting';
 import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
-import { useLiveTranscription } from '@/hooks/use-live-transcription';
+
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
 const MAX_RECORDING_DURATION = 15 * 60; // 15 minutes in seconds
@@ -23,12 +23,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [consentGiven, setConsentGiven] = useState<boolean>(false);
   const [isHydrated, setIsHydrated] = useState(false);
   
-  // Live transcription setup
-  const liveTranscription = useLiveTranscription({
-    url: process.env.EXPO_PUBLIC_LIVE_WS_URL || "ws://localhost:8787", // Local WebSocket server for demo
-    token: undefined,
-    sampleRate: 16000,
-  });
+
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -187,15 +182,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           currentMeeting: undefined,
         }));
         
-        // Stop live transcription
-        if (Platform.OS === 'web') {
-          try {
-            await liveTranscription.stop();
-            console.log('Live transcription stopped');
-          } catch (error) {
-            console.warn('Failed to stop live transcription:', error);
-          }
-        }
+
 
         const meetingId = updatedMeeting.id;
         if (resolve) {
@@ -220,14 +207,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         currentMeeting: undefined,
       }));
       
-      // Stop live transcription on error
-      if (Platform.OS === 'web') {
-        try {
-          await liveTranscription.stop();
-        } catch (e) {
-          console.warn('Failed to stop live transcription on error:', e);
-        }
-      }
+
       
       if (resolve) {
         resolve(null);
@@ -355,15 +335,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         currentMeeting: newMeeting,
       }));
       
-      // Start live transcription if on web
-      if (Platform.OS === 'web') {
-        try {
-          await liveTranscription.start();
-          console.log('Live transcription started');
-        } catch (error) {
-          console.warn('Failed to start live transcription:', error);
-        }
-      }
+
 
       const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
       const updatedMeetings = [...currentMeetings, newMeeting];
@@ -952,12 +924,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       consentGiven,
       processingProgress,
       isHydrated,
-      liveTranscript: {
-        partial: liveTranscription.partial,
-        segments: liveTranscription.segments,
-        connected: liveTranscription.connected,
-        error: liveTranscription.error,
-      },
+
       setConsentGiven,
       startRecording,
       pauseRecording,
@@ -974,10 +941,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     consentGiven,
     processingProgress,
     isHydrated,
-    liveTranscription.partial,
-    liveTranscription.segments,
-    liveTranscription.connected,
-    liveTranscription.error,
+
     startRecording,
     pauseRecording,
     resumeRecording,

@@ -10,7 +10,7 @@ import { Meeting } from '@/types/meeting';
 import ConsentBanner from '@/components/ConsentBanner';
 import RecordingControls from '@/components/RecordingControls';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
-import { LiveASRTranscript } from '@/components/LiveASRTranscript';
+
 
 export default function HomeScreen() {
   console.log('HomeScreen: Component mounted');
@@ -19,7 +19,7 @@ export default function HomeScreen() {
     state, 
     meetings, 
     consentGiven, 
-    liveTranscript,
+
     setConsentGiven, 
     startRecording, 
     pauseRecording, 
@@ -231,17 +231,7 @@ export default function HomeScreen() {
               audioLevels={state.audioLevels}
             />
             
-            {/* Live Transcription Display */}
-            <View style={styles.liveTranscriptSection}>
-              <Text style={styles.liveTranscriptTitle}>Live Transcript</Text>
-              <LiveASRTranscript
-                partial={liveTranscript.partial}
-                segments={liveTranscript.segments}
-                connected={liveTranscript.connected}
-                error={liveTranscript.error}
-                isRecording={state.isRecording}
-              />
-            </View>
+
             
             <RecordingControls
               isRecording={state.isRecording}
@@ -724,16 +714,5 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
   },
-  liveTranscriptSection: {
-    width: '100%',
-    marginVertical: 20,
-    paddingHorizontal: 20,
-  },
-  liveTranscriptTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF8C00',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
+
 });
