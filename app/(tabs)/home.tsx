@@ -239,6 +239,7 @@ export default function HomeScreen() {
                 segments={liveTranscript.segments}
                 connected={liveTranscript.connected}
                 error={liveTranscript.error}
+                isRecording={state.isRecording}
               />
             </View>
             

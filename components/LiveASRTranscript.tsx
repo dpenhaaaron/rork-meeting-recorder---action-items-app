@@ -7,11 +7,13 @@ export function LiveASRTranscript({
   segments,
   connected,
   error,
+  isRecording = false,
 }: {
   partial: string;
   segments: LiveSegment[];
   connected: boolean;
   error?: string;
+  isRecording?: boolean;
 }) {
   return (
     <View style={styles.container}>
@@ -20,8 +22,11 @@ export function LiveASRTranscript({
           <Text key={s.id} style={styles.finalText}>{s.text}</Text>
         ))}
         {partial ? <Text style={styles.partialText}>{partial}</Text> : null}
-        {segments.length === 0 && !partial && connected && !error && (
+        {segments.length === 0 && !partial && connected && !error && isRecording && (
           <Text style={styles.waitingText}>Listening for speech...</Text>
+        )}
+        {!isRecording && segments.length === 0 && !error && (
+          <Text style={styles.waitingText}>Start recording to see live transcription</Text>
         )}
         {error && (
           <Text style={styles.errorText}>Error: {error}</Text>
@@ -39,7 +44,7 @@ export function LiveASRTranscript({
           styles.pillText, 
           error ? styles.pillTextError : (connected ? styles.pillTextActive : styles.pillTextInactive)
         ]}>
-          {error ? "Error" : (connected ? (partial ? "Listening..." : "Live") : "Connecting...")}
+          {error ? "Error" : (connected ? (partial ? "Transcribing..." : "Live") : "Connecting...")}
         </Text>
       </View>
     </View>

@@ -1,18 +1,46 @@
-// Simple WebSocket server for live transcription demo
+// Robust WebSocket server for live transcription demo
 // This is a mock implementation for demonstration purposes
 // In production, you would connect to a real ASR service like OpenAI Realtime API, Deepgram, etc.
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 
-const wss = new WebSocketServer({ port: 8787 });
+const wss = new WebSocketServer({ 
+  port: 8787,
+  perMessageDeflate: false, // Disable compression for lower latency
+});
 
 console.log('Live transcription WebSocket server running on port 8787');
 
-wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-  console.log('Client connected to live transcription');
+// Heartbeat function to keep connections alive
+function heartbeat(this: WebSocket & { isAlive?: boolean }) {
+  this.isAlive = true;
+}
+
+// Ping all clients every 15 seconds to keep connections alive
+const interval = setInterval(() => {
+  wss.clients.forEach((ws: WebSocket & { isAlive?: boolean }) => {
+    if (ws.isAlive === false) {
+      console.log('Terminating stale connection');
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 15000);
+
+wss.on('close', () => {
+  clearInterval(interval);
+});
+
+wss.on('connection', (ws: WebSocket & { isAlive?: boolean }, req: IncomingMessage) => {
+  console.log('Client connected to live transcription from:', req.socket.remoteAddress);
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
+  
   let segmentId = 0;
   let mockTranscriptTimer: ReturnType<typeof setInterval> | null = null;
+  let audioConfig: { sampleRate?: number; encoding?: string } | null = null;
   
   // Mock transcription phrases for demo
   const mockPhrases = [
@@ -36,15 +64,31 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     if (!isBinary) {
       try {
         const message = JSON.parse(data.toString());
-        console.log('Received message:', message);
+        console.log('Received message:', message.type);
         
         if (message.type === 'config') {
-          console.log('Audio config received:', message);
+          audioConfig = {
+            sampleRate: message.sampleRate || 16000,
+            encoding: message.encoding || 'linear16'
+          };
+          console.log('Audio config received:', audioConfig);
+          
+          // Send acknowledgment
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'config_ack', config: audioConfig }));
+          }
           
           // Start mock transcription after a short delay
           setTimeout(() => {
             startMockTranscription();
-          }, 2000);
+          }, 1000);
+        }
+        
+        if (message.type === 'ping') {
+          // Respond to client ping
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong', t: Date.now() }));
+          }
         }
         
         if (message.type === 'end') {
@@ -54,20 +98,33 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
             mockTranscriptTimer = null;
           }
         }
-      } catch {
-        console.log('Non-JSON message received');
+      } catch (error) {
+        console.warn('Failed to parse message:', error);
       }
     } else {
       // Binary audio data received
-      console.log('Audio data received:', data.length, 'bytes');
-      // In a real implementation, you would forward this to your ASR service
+      const bytesReceived = data.length;
+      if (bytesReceived > 0) {
+        console.log(`Audio data received: ${bytesReceived} bytes (${audioConfig?.sampleRate}Hz ${audioConfig?.encoding})`);
+        // In a real implementation, you would forward this to your ASR service
+        // For now, we just acknowledge receipt
+      }
     }
   });
   
   function startMockTranscription() {
-    console.log('Starting mock transcription');
+    console.log('Starting mock transcription with config:', audioConfig);
     
     mockTranscriptTimer = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.log('WebSocket closed, stopping mock transcription');
+        if (mockTranscriptTimer) {
+          clearInterval(mockTranscriptTimer);
+          mockTranscriptTimer = null;
+        }
+        return;
+      }
+      
       if (currentPhraseIndex < mockPhrases.length) {
         const phrase = mockPhrases[currentPhraseIndex];
         
@@ -77,30 +134,40 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         
         words.forEach((word, index) => {
           setTimeout(() => {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            
             partialText += (index > 0 ? ' ' : '') + word;
             
-            if (ws.readyState === WebSocket.OPEN) {
+            try {
               ws.send(JSON.stringify({
                 type: 'partial',
-                text: partialText
+                text: partialText,
+                confidence: 0.8 + Math.random() * 0.2 // Mock confidence
               }));
+            } catch (error) {
+              console.error('Failed to send partial:', error);
             }
             
             // Send final transcript when phrase is complete
             if (index === words.length - 1) {
               setTimeout(() => {
-                if (ws.readyState === WebSocket.OPEN) {
+                if (ws.readyState !== WebSocket.OPEN) return;
+                
+                try {
                   ws.send(JSON.stringify({
                     type: 'final',
                     id: `segment_${segmentId++}`,
                     text: phrase,
                     start: Date.now() - phrase.length * 100,
-                    end: Date.now()
+                    end: Date.now(),
+                    confidence: 0.9 + Math.random() * 0.1
                   }));
+                } catch (error) {
+                  console.error('Failed to send final:', error);
                 }
-              }, 500);
+              }, 300);
             }
-          }, index * 200); // 200ms delay between words
+          }, index * 150); // 150ms delay between words for more natural flow
         });
         
         currentPhraseIndex++;
@@ -108,11 +175,11 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         // Reset for demo purposes
         currentPhraseIndex = 0;
       }
-    }, 5000); // New phrase every 5 seconds
+    }, 4000); // New phrase every 4 seconds
   }
   
-  ws.on('close', () => {
-    console.log('Client disconnected from live transcription');
+  ws.on('close', (code: number, reason: Buffer) => {
+    console.log(`Client disconnected from live transcription: ${code} ${reason.toString()}`);
     if (mockTranscriptTimer) {
       clearInterval(mockTranscriptTimer);
       mockTranscriptTimer = null;
@@ -120,12 +187,23 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   });
   
   ws.on('error', (error: Error) => {
-    console.error('WebSocket error:', error.message);
+    console.error('WebSocket error for client:', error.message);
     if (mockTranscriptTimer) {
       clearInterval(mockTranscriptTimer);
       mockTranscriptTimer = null;
     }
   });
+  
+  // Send initial ready message
+  setTimeout(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ 
+        type: 'ready', 
+        message: 'Live transcription server ready',
+        timestamp: Date.now()
+      }));
+    }
+  }, 100);
 });
 
 export default wss;
