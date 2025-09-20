@@ -11,6 +11,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 const styles = StyleSheet.create({
   hydrationContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFFFF" },
   hydrationText: { fontSize: 16, color: "#FF8C00", fontWeight: "bold" },
+  gestureHandler: { flex: 1 },
 });
 
 const queryClient = new QueryClient({
@@ -20,7 +21,7 @@ const queryClient = new QueryClient({
 function HydrationWrapper({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setIsHydrated(true), 50);
+    const timer = setTimeout(() => setIsHydrated(true), 10);
     return () => clearTimeout(timer);
   }, []);
   if (!isHydrated) {
@@ -36,11 +37,14 @@ function HydrationWrapper({ children }: { children: ReactNode }) {
 function RootLayoutNav() {
   return (
     <Stack>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="signin" options={{ headerShown: false }} />
+      <Stack.Screen name="signup" options={{ headerShown: false }} />
       <Stack.Screen name="verify-email" options={{ headerShown: false }} />
+      <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="admin" options={{ headerShown: false }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+      <Stack.Screen name="meeting/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -56,7 +60,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <RecordingProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
+              <GestureHandlerRootView style={styles.gestureHandler}>
                 <RootLayoutNav />
               </GestureHandlerRootView>
             </RecordingProvider>

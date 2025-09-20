@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, StyleSheet, Animated, useWindowDimensions } from 'react-native';
+import { Text, StyleSheet, Animated, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/auth-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function Splash() {
   const { isAuthenticated, isLoading } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(-width)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -49,7 +51,7 @@ export default function Splash() {
           // Fallback navigation
           router.push('/signin');
         }
-      }, 2000);
+      }, 1000);
 
       return () => clearTimeout(timer);
     }
@@ -61,28 +63,34 @@ export default function Splash() {
   }
 
   return (
-    <LinearGradient
-      colors={['#FF6B6B', '#FF8E53', '#FF6B35']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
-    >
-      <Animated.View 
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateX: slideAnim }]
-          }
-        ]}
+    <View style={[styles.safeContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <LinearGradient
+        colors={['#FF6B6B', '#FF8E53', '#FF6B35']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.container}
       >
-        <Text style={styles.logo}>Convai</Text>
-      </Animated.View>
-    </LinearGradient>
+        <Animated.View 
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateX: slideAnim }]
+            }
+          ]}
+        >
+          <Text style={styles.logo}>Convai</Text>
+        </Animated.View>
+      </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#FF6B6B',
+  },
   container: {
     flex: 1,
     justifyContent: 'center',

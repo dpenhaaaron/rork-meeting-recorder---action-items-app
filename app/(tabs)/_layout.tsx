@@ -3,7 +3,7 @@ import { Tabs, router } from "expo-router";
 import { Mic, FileText, Settings } from "lucide-react-native";
 import { useAuth } from "@/hooks/auth-store";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+
 
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -35,13 +35,33 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#111827",
+        tabBarActiveTintColor: "#FF8C00",
         tabBarInactiveTintColor: "#9CA3AF",
         headerShown: false,
-        tabBarStyle: { backgroundColor: "#FFFFFF", borderTopColor: "#E5E7EB", paddingTop: 8, paddingBottom: 8, height: 60 },
+        tabBarStyle: { backgroundColor: "#FFFFFF", borderTopColor: "#E5E7EB" },
       }}
     >
-      {/* your Tabs.Screen definitions */}
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => <Mic size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="meetings"
+        options={{
+          title: "Meetings",
+          tabBarIcon: ({ color, size }) => <FileText size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
