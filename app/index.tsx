@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/auth-store';
 
-export default function SplashScreen() {
+export default function Splash() {
   const { isAuthenticated, isLoading } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
   const { width } = useWindowDimensions();

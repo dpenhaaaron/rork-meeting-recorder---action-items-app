@@ -907,28 +907,30 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     };
   }, []);
 
-  return useMemo(() => ({
-    state,
-    meetings: isHydrated ? meetings : [],
-    consentGiven,
-    processingProgress,
-    isHydrated,
-    setConsentGiven,
-    startRecording,
-    pauseRecording,
-    resumeRecording,
-    stopRecording,
-    updateMeetingArtifacts,
-    processMeeting,
-    retryProcessing,
-    deleteMeeting,
-  }), [
+  const value = useMemo(() => {
+    const visibleMeetings = isHydrated ? meetings : [];
+    return {
+      state,
+      meetings: visibleMeetings,
+      consentGiven,
+      processingProgress,
+      isHydrated,
+      setConsentGiven,
+      startRecording,
+      pauseRecording,
+      resumeRecording,
+      stopRecording,
+      updateMeetingArtifacts,
+      processMeeting,
+      retryProcessing,
+      deleteMeeting,
+    };
+  }, [
     state,
     meetings,
     consentGiven,
     processingProgress,
     isHydrated,
-    setConsentGiven,
     startRecording,
     pauseRecording,
     resumeRecording,
@@ -938,4 +940,6 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     retryProcessing,
     deleteMeeting,
   ]);
+
+  return value;
 });

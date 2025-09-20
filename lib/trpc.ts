@@ -32,35 +32,18 @@ export const trpcClient = trpc.createClient({
     httpLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      fetch: (url, options) => {
-        // Add timeout and better error handling
+      fetch: async (url, options) => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-        
-        return fetch(url, {
-          ...options,
-          signal: controller.signal,
-          headers: {
-            ...options?.headers,
-            'Content-Type': 'application/json',
-          },
-        })
-        .then(response => {
-          clearTimeout(timeoutId);
-          return response;
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          console.error('tRPC fetch error:', {
-            message: error.message,
-            url,
-            options: {
-              method: options?.method,
-              headers: options?.headers
-            }
-          });
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        try {
+          const res = await fetch(url, { ...options, signal: controller.signal, headers: { ...options?.headers, "Content-Type": "application/json" }});
+          return res;
+        } catch (error) {
+          console.error("tRPC fetch error:", { message: (error as Error).message, url, options: { method: options?.method, headers: options?.headers } });
           throw error;
-        });
+        } finally {
+          clearTimeout(timeoutId);
+        }
       },
     }),
   ],
