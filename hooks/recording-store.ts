@@ -9,7 +9,7 @@ import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } f
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 10 * 60; // 10 minutes in seconds to prevent failures
+const MAX_RECORDING_DURATION = 15 * 60; // 15 minutes in seconds to prevent failures
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -403,7 +403,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 10-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 15-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -486,7 +486,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 10-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 15-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -732,19 +732,19 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       });
       
       // More specific error message based on duration
-      if (meeting.duration > 300) { // 5 minutes
-        throw new Error('Recording over 5 minutes failed to save properly. Please try recording shorter segments or check your device storage.');
+      if (meeting.duration > 600) { // 10 minutes
+        throw new Error('Recording over 10 minutes failed to save properly. Please try recording shorter segments or check your device storage.');
       } else {
         throw new Error('Audio file not found or is empty. The recording may have failed. Please try recording again.');
       }
     }
     
-    if (audioFileSize < 1000) { // Less than 1KB
+    if (audioFileSize < 500) { // Less than 500 bytes - more lenient
       console.error(`Audio file too small: ${audioFileSize} bytes for ${meeting.duration}s recording`);
-      if (meeting.duration > 300) { // 5 minutes
-        throw new Error('Long recording failed to save properly. Try recording shorter segments (under 5 minutes) for better reliability.');
+      if (meeting.duration > 600) { // 10 minutes
+        throw new Error('Long recording failed to save properly. Try recording shorter segments (under 10 minutes) for better reliability.');
       } else {
-        throw new Error('Audio file is too small (less than 1KB). The recording may be corrupted. Please try recording again.');
+        throw new Error('Audio file is too small (less than 500 bytes). The recording may be corrupted. Please try recording again.');
       }
     }
 

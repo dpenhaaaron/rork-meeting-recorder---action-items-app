@@ -352,9 +352,10 @@ export default function MeetingsScreen() {
             </Text>
             <View style={styles.tipContainer}>
               <Text style={styles.tipTitle}>💡 Recording Tips</Text>
-              <Text style={styles.tipText}>• Keep recordings under 10 minutes for best reliability</Text>
-              <Text style={styles.tipText}>• Longer meetings are automatically split for processing</Text>
+              <Text style={styles.tipText}>• Recordings up to 15 minutes are supported</Text>
+              <Text style={styles.tipText}>• Longer meetings are automatically processed in chunks</Text>
               <Text style={styles.tipText}>• Ensure good audio quality for accurate transcription</Text>
+              <Text style={styles.tipText}>• Check your internet connection before processing</Text>
             </View>
           </View>
         ) : (
