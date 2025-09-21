@@ -101,9 +101,22 @@ export default function MeetingsScreen() {
     } catch (error) {
       console.error('Processing failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      let userFriendlyMessage = errorMessage;
+      
+      // Provide more specific guidance based on error type
+      if (errorMessage.includes('too small') || errorMessage.includes('empty')) {
+        userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio.';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+        userFriendlyMessage = 'Processing timed out. For recordings over 10 minutes, try breaking them into shorter segments.';
+      } else if (errorMessage.includes('Network') || errorMessage.includes('connection')) {
+        userFriendlyMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (errorMessage.includes('transcribe') || errorMessage.includes('transcription')) {
+        userFriendlyMessage = 'Failed to transcribe the audio. Please ensure the recording has clear speech and try again.';
+      }
+      
       Alert.alert(
         'Processing Failed', 
-        errorMessage,
+        `${userFriendlyMessage}\n\nTip: For best results, record in a quiet environment with clear speech.`,
         [
           { text: 'OK', style: 'default' },
           { 
@@ -138,9 +151,22 @@ export default function MeetingsScreen() {
             } catch (error) {
               console.error('Retry processing failed:', error);
               const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+              let userFriendlyMessage = errorMessage;
+              
+              // Provide more specific guidance based on error type
+              if (errorMessage.includes('too small') || errorMessage.includes('empty')) {
+                userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio.';
+              } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+                userFriendlyMessage = 'Processing timed out. For recordings over 10 minutes, try breaking them into shorter segments.';
+              } else if (errorMessage.includes('Network') || errorMessage.includes('connection')) {
+                userFriendlyMessage = 'Network error. Please check your internet connection and try again.';
+              } else if (errorMessage.includes('transcribe') || errorMessage.includes('transcription')) {
+                userFriendlyMessage = 'Failed to transcribe the audio. Please ensure the recording has clear speech and try again.';
+              }
+              
               Alert.alert(
                 'Processing Failed Again', 
-                `${errorMessage}\n\nPlease check your internet connection and try again later.`,
+                `${userFriendlyMessage}\n\nTip: For best results, record in a quiet environment with clear speech.`,
                 [{ text: 'OK', style: 'default' }]
               );
             } finally {

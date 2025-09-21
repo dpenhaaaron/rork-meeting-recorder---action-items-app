@@ -111,8 +111,8 @@ const validateTranscript = (transcript: string): string => {
     throw new Error('Invalid transcript: transcript is empty');
   }
   
-  if (cleaned.length < 10) {
-    throw new Error('Invalid transcript: transcript is too short (less than 10 characters)');
+  if (cleaned.length < 5) {
+    throw new Error('Invalid transcript: transcript is too short (less than 5 characters)');
   }
   
   return cleaned;
@@ -174,8 +174,8 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       if (request.audio.size === 0) {
         throw new Error('Audio file is empty (0 bytes)');
       }
-      if (request.audio.size < 1000) { // Less than 1KB
-        throw new Error('Audio file is too small (less than 1KB)');
+      if (request.audio.size < 100) { // Less than 100 bytes - very lenient
+        throw new Error('Audio file is too small (less than 100 bytes)');
       }
       console.log('Web audio file size:', request.audio.size, 'bytes');
     }
@@ -251,12 +251,12 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
 
     console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
     
-    // Add timeout for transcription requests - reduced for better reliability
+    // Add timeout for transcription requests - increased for longer recordings
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('Transcription request timed out after 15 minutes');
+      console.log('Transcription request timed out after 25 minutes');
       controller.abort();
-    }, 15 * 60 * 1000); // 15 minutes for better reliability
+    }, 25 * 60 * 1000); // 25 minutes for longer recordings
     
     try {
       const response = await fetch(`${AI_BASE_URL}/stt/transcribe/`, {
@@ -401,7 +401,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('Transcription timed out after 15 minutes. Please try recording shorter segments (under 10 minutes) for better reliability.');
+          throw new Error('Transcription timed out after 25 minutes. Please try recording shorter segments (under 15 minutes) for better reliability.');
         }
         if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
           throw new Error('Network error: Please check your internet connection and try again.');

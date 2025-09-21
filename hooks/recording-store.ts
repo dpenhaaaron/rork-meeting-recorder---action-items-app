@@ -732,20 +732,22 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       });
       
       // More specific error message based on duration
-      if (meeting.duration > 600) { // 10 minutes
-        throw new Error('Recording over 10 minutes failed to save properly. Please try recording shorter segments or check your device storage.');
+      if (meeting.duration > 900) { // 15 minutes
+        throw new Error('Recording over 15 minutes failed to save properly. Please try recording shorter segments or check your device storage.');
       } else {
         throw new Error('Audio file not found or is empty. The recording may have failed. Please try recording again.');
       }
     }
     
-    if (audioFileSize < 500) { // Less than 500 bytes - more lenient
-      console.error(`Audio file too small: ${audioFileSize} bytes for ${meeting.duration}s recording`);
-      if (meeting.duration > 600) { // 10 minutes
-        throw new Error('Long recording failed to save properly. Try recording shorter segments (under 10 minutes) for better reliability.');
-      } else {
-        throw new Error('Audio file is too small (less than 500 bytes). The recording may be corrupted. Please try recording again.');
-      }
+    // More lenient file size validation - only check for completely empty files
+    if (audioFileSize === 0) {
+      console.error(`Audio file is completely empty: ${audioFileSize} bytes for ${meeting.duration}s recording`);
+      throw new Error('Audio file is empty. The recording may have failed. Please try recording again.');
+    }
+    
+    // Warn but don't fail for small files if duration is reasonable
+    if (audioFileSize < 1000 && meeting.duration > 30) { // Less than 1KB for >30s recording
+      console.warn(`Audio file seems small: ${audioFileSize} bytes for ${meeting.duration}s recording - proceeding anyway`);
     }
 
     try {
@@ -793,7 +795,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
-      const shouldUseStreaming = meeting.duration >= 180; // 3 minutes - use streaming for better reliability
+      const shouldUseStreaming = meeting.duration >= 300; // 5 minutes - use streaming for better reliability
       
       console.log('Starting transcription with:', {
         shouldUseStreaming,
