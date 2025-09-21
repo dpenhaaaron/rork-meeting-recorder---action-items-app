@@ -9,7 +9,7 @@ import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } f
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 15 * 60; // 15 minutes in seconds
+const MAX_RECORDING_DURATION = 60 * 60; // 60 minutes in seconds
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -266,8 +266,21 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           }
         });
         streamRef.current = stream;
+        // Try different MIME types for better compatibility
+        let mimeType = 'audio/webm;codecs=opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/webm';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'audio/mp4';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = ''; // Let browser choose
+            }
+          }
+        }
+        
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'audio/webm;codecs=opus'
+          mimeType: mimeType || undefined,
+          audioBitsPerSecond: 128000
         });
         mediaRecorderRef.current = mediaRecorder;
         audioChunksRef.current = [];
@@ -275,11 +288,26 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         mediaRecorder.ondataavailable = (event) => {
           if (event.data && typeof event.data.size === 'number' && event.data.size > 0) {
             audioChunksRef.current.push(event.data);
+            console.log('Audio chunk received:', event.data.size, 'bytes, total chunks:', audioChunksRef.current.length);
           }
+        };
+        
+        mediaRecorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event);
+        };
+        
+        mediaRecorder.onstart = () => {
+          console.log('MediaRecorder started successfully');
+        };
+        
+        mediaRecorder.onstop = () => {
+          console.log('MediaRecorder stopped, total chunks:', audioChunksRef.current.length);
         };
 
         try {
-          mediaRecorder.start(1000);
+          // Start with smaller timeslice for better reliability on long recordings
+          mediaRecorder.start(5000); // 5 second chunks
+          console.log('MediaRecorder started with mimeType:', mimeType);
         } catch (e) {
           console.error('Failed to start MediaRecorder:', e);
           throw new Error('Failed to start recording. Please ensure your browser allows microphone access.');
@@ -355,7 +383,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 15-minute limit, auto-stopping...');
+            console.log('Recording reached 60-minute limit, auto-stopping...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -438,7 +466,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 15-minute limit, auto-stopping...');
+            console.log('Recording reached 60-minute limit, auto-stopping...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;

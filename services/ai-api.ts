@@ -251,12 +251,12 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
 
     console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
     
-    // Add timeout for transcription requests
+    // Add timeout for transcription requests - increased for longer recordings
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('Transcription request timed out after 15 minutes');
+      console.log('Transcription request timed out after 30 minutes');
       controller.abort();
-    }, 15 * 60 * 1000); // 15 minutes
+    }, 30 * 60 * 1000); // 30 minutes
     
     try {
       const response = await fetch(`${AI_BASE_URL}/stt/transcribe/`, {
@@ -401,7 +401,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('Transcription timed out after 15 minutes. Please try with a shorter recording.');
+          throw new Error('Transcription timed out after 30 minutes. Please try with a shorter recording or split it into smaller segments.');
         }
         if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
           throw new Error('Network error: Please check your internet connection and try again.');
