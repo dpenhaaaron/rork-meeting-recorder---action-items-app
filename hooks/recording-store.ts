@@ -9,7 +9,7 @@ import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } f
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 60 * 60; // 60 minutes in seconds
+const MAX_RECORDING_DURATION = 30 * 60; // 30 minutes in seconds
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -289,11 +289,30 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           if (event.data && typeof event.data.size === 'number' && event.data.size > 0) {
             audioChunksRef.current.push(event.data);
             console.log('Audio chunk received:', event.data.size, 'bytes, total chunks:', audioChunksRef.current.length);
+            
+            // Check if we're approaching storage limits (warn at 100MB)
+            const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
+            if (totalSize > 100 * 1024 * 1024) {
+              console.warn('Recording approaching size limit:', totalSize, 'bytes');
+            }
           }
         };
         
         mediaRecorder.onerror = (event) => {
           console.error('MediaRecorder error:', event);
+          // Force stop recording on error to prevent hanging state
+          setState(prev => ({
+            ...prev,
+            isRecording: false,
+            isPaused: false,
+            duration: 0,
+            currentMeeting: undefined,
+          }));
+          
+          if (durationInterval.current) {
+            clearInterval(durationInterval.current);
+            durationInterval.current = null;
+          }
         };
         
         mediaRecorder.onstart = () => {
@@ -306,7 +325,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
         try {
           // Start with smaller timeslice for better reliability on long recordings
-          mediaRecorder.start(5000); // 5 second chunks
+          // Use 1 second chunks to prevent data loss on long recordings
+          mediaRecorder.start(1000); // 1 second chunks for better reliability
           console.log('MediaRecorder started with mimeType:', mimeType);
         } catch (e) {
           console.error('Failed to start MediaRecorder:', e);
@@ -383,7 +403,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 60-minute limit, auto-stopping...');
+            console.log('Recording reached 30-minute limit, auto-stopping...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -466,7 +486,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 60-minute limit, auto-stopping...');
+            console.log('Recording reached 30-minute limit, auto-stopping...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
