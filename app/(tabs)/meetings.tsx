@@ -105,9 +105,11 @@ export default function MeetingsScreen() {
       
       // Provide more specific guidance based on error type
       if (errorMessage.includes('too small') || errorMessage.includes('empty')) {
-        userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio.';
+        userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio for at least 5 seconds.';
+      } else if (errorMessage.includes('too short')) {
+        userFriendlyMessage = 'Recording is too short. Please record for at least 5 seconds with clear speech.';
       } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-        userFriendlyMessage = 'Processing timed out. For recordings over 10 minutes, try breaking them into shorter segments.';
+        userFriendlyMessage = 'Processing timed out. For recordings over 15 minutes, try breaking them into shorter segments.';
       } else if (errorMessage.includes('Network') || errorMessage.includes('connection')) {
         userFriendlyMessage = 'Network error. Please check your internet connection and try again.';
       } else if (errorMessage.includes('transcribe') || errorMessage.includes('transcription')) {
@@ -155,9 +157,11 @@ export default function MeetingsScreen() {
               
               // Provide more specific guidance based on error type
               if (errorMessage.includes('too small') || errorMessage.includes('empty')) {
-                userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio.';
+                userFriendlyMessage = 'The recording file appears to be corrupted or empty. Please try recording again with clear audio for at least 5 seconds.';
+              } else if (errorMessage.includes('too short')) {
+                userFriendlyMessage = 'Recording is too short. Please record for at least 5 seconds with clear speech.';
               } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-                userFriendlyMessage = 'Processing timed out. For recordings over 10 minutes, try breaking them into shorter segments.';
+                userFriendlyMessage = 'Processing timed out. For recordings over 15 minutes, try breaking them into shorter segments.';
               } else if (errorMessage.includes('Network') || errorMessage.includes('connection')) {
                 userFriendlyMessage = 'Network error. Please check your internet connection and try again.';
               } else if (errorMessage.includes('transcribe') || errorMessage.includes('transcription')) {
@@ -378,7 +382,7 @@ export default function MeetingsScreen() {
             </Text>
             <View style={styles.tipContainer}>
               <Text style={styles.tipTitle}>💡 Recording Tips</Text>
-              <Text style={styles.tipText}>• Recordings up to 15 minutes are supported</Text>
+              <Text style={styles.tipText}>• Recordings up to 20 minutes are supported</Text>
               <Text style={styles.tipText}>• Longer meetings are automatically processed in chunks</Text>
               <Text style={styles.tipText}>• Ensure good audio quality for accurate transcription</Text>
               <Text style={styles.tipText}>• Check your internet connection before processing</Text>
