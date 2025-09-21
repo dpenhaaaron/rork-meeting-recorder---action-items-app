@@ -3,9 +3,9 @@ import { MeetingArtifacts, EmailDraft } from '@/types/meeting';
 const AI_BASE_URL = 'https://toolkit.rork.com';
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 2000;
-const MAX_TRANSCRIPT_LENGTH = 12000; // Process most meetings directly
-const CHUNK_SIZE_LIMIT = 2000; // Optimized chunk size
-const CHUNK_DELAY = 100; // Delay between chunk processing in ms
+const MAX_TRANSCRIPT_LENGTH = 8000; // Reduced for better reliability
+const CHUNK_SIZE_LIMIT = 1500; // Smaller chunks for better processing
+const CHUNK_DELAY = 200; // Increased delay between chunk processing in ms
 
 export interface TranscribeRequest {
   audio: File | { uri: string; name: string; type: string };
@@ -251,12 +251,12 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
 
     console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
     
-    // Add timeout for transcription requests - increased for longer recordings
+    // Add timeout for transcription requests - reduced for better reliability
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('Transcription request timed out after 30 minutes');
+      console.log('Transcription request timed out after 15 minutes');
       controller.abort();
-    }, 30 * 60 * 1000); // 30 minutes
+    }, 15 * 60 * 1000); // 15 minutes for better reliability
     
     try {
       const response = await fetch(`${AI_BASE_URL}/stt/transcribe/`, {
@@ -401,7 +401,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('Transcription timed out after 30 minutes. Please try with a shorter recording or split it into smaller segments.');
+          throw new Error('Transcription timed out after 15 minutes. Please try recording shorter segments (under 10 minutes) for better reliability.');
         }
         if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
           throw new Error('Network error: Please check your internet connection and try again.');

@@ -350,6 +350,12 @@ export default function MeetingsScreen() {
             <Text style={styles.emptyStateText}>
               Start recording meetings to see them here with AI-generated summaries and action items.
             </Text>
+            <View style={styles.tipContainer}>
+              <Text style={styles.tipTitle}>💡 Recording Tips</Text>
+              <Text style={styles.tipText}>• Keep recordings under 10 minutes for best reliability</Text>
+              <Text style={styles.tipText}>• Longer meetings are automatically split for processing</Text>
+              <Text style={styles.tipText}>• Ensure good audio quality for accurate transcription</Text>
+            </View>
           </View>
         ) : (
           <View style={styles.meetingsList}>
@@ -795,5 +801,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#3B82F6',
     fontWeight: '500',
+  },
+  tipContainer: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: '#FFF4E6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFE0B3',
+  },
+  tipTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FF8C00',
+    marginBottom: 8,
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+    lineHeight: 20,
   },
 });

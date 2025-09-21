@@ -37,7 +37,7 @@ export default function RecordingControls({
   };
   
   const getRemainingTime = (seconds: number): string => {
-    const maxDuration = 30 * 60; // 30 minutes
+    const maxDuration = 10 * 60; // 10 minutes for better reliability
     const remaining = maxDuration - seconds;
     if (remaining <= 0) return '0:00';
     
@@ -47,8 +47,8 @@ export default function RecordingControls({
   };
   
   const isNearLimit = (seconds: number): boolean => {
-    const maxDuration = 30 * 60; // 30 minutes
-    return seconds > maxDuration - 300; // Last 5 minutes
+    const maxDuration = 10 * 60; // 10 minutes for better reliability
+    return seconds > maxDuration - 120; // Last 2 minutes
   };
 
   const handlePress = (action: () => void) => {

@@ -9,7 +9,7 @@ import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } f
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 30 * 60; // 30 minutes in seconds
+const MAX_RECORDING_DURATION = 10 * 60; // 10 minutes in seconds to prevent failures
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -403,7 +403,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 30-minute limit, auto-stopping...');
+            console.log('Recording reached 10-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -486,7 +486,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 30-minute limit, auto-stopping...');
+            console.log('Recording reached 10-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -727,14 +727,25 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         platform: Platform.OS,
         audioUri: meeting.audioUri,
         audioFileSize,
-        hasAudio
+        hasAudio,
+        duration: meeting.duration
       });
-      throw new Error('Audio file not found or is empty. The recording may have failed. Please try recording again.');
+      
+      // More specific error message based on duration
+      if (meeting.duration > 300) { // 5 minutes
+        throw new Error('Recording over 5 minutes failed to save properly. Please try recording shorter segments or check your device storage.');
+      } else {
+        throw new Error('Audio file not found or is empty. The recording may have failed. Please try recording again.');
+      }
     }
     
     if (audioFileSize < 1000) { // Less than 1KB
-      console.error(`Audio file too small: ${audioFileSize} bytes`);
-      throw new Error('Audio file is too small (less than 1KB). The recording may be corrupted. Please try recording again.');
+      console.error(`Audio file too small: ${audioFileSize} bytes for ${meeting.duration}s recording`);
+      if (meeting.duration > 300) { // 5 minutes
+        throw new Error('Long recording failed to save properly. Try recording shorter segments (under 5 minutes) for better reliability.');
+      } else {
+        throw new Error('Audio file is too small (less than 1KB). The recording may be corrupted. Please try recording again.');
+      }
     }
 
     try {
@@ -782,7 +793,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
-      const shouldUseStreaming = meeting.duration >= 300; // 5 minutes
+      const shouldUseStreaming = meeting.duration >= 180; // 3 minutes - use streaming for better reliability
       
       console.log('Starting transcription with:', {
         shouldUseStreaming,
