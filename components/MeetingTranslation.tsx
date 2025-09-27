@@ -334,7 +334,7 @@ export default function MeetingTranslation({ artifacts }: MeetingTranslationProp
       {showLanguageSelector && (
         <View style={styles.languageModal}>
           <ScrollView style={styles.languageList}>
-            {supportedLanguages.filter(lang => lang.code !== 'en').map((lang) => (
+            {supportedLanguages.map((lang) => (
               <TouchableOpacity
                 key={lang.code}
                 style={[
