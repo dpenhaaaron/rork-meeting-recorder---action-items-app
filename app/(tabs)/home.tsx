@@ -700,14 +700,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   featureHighlights: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: 'column',
+    alignItems: 'center',
     marginTop: 24,
     paddingHorizontal: 20,
+    gap: 16,
   },
   featureItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
   featureText: {
     fontSize: 12,
