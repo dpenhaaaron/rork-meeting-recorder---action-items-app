@@ -1,39 +1,60 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, router } from 'expo-router';
-import { Mail, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Lock, ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '@/hooks/auth-store';
 
-export default function ForgotPasswordScreen() {
-  const { sendPasswordReset } = useAuth();
-  const [email, setEmail] = useState('');
+export default function ResetPasswordScreen() {
+  const { resetPassword } = useAuth();
+  const params = useLocalSearchParams();
+  const token = params.token as string;
+  
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
 
-  const handleSendResetLink = async () => {
-    if (!email.trim()) {
-      Alert.alert('Missing Email', 'Please enter your email address.');
+  const handleResetPassword = async () => {
+    if (!password.trim()) {
+      Alert.alert('Missing Password', 'Please enter your new password.');
       return;
     }
 
-    if (!email.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+    if (password.length < 6) {
+      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Password Mismatch', 'Passwords do not match.');
+      return;
+    }
+
+    if (!token) {
+      Alert.alert('Invalid Link', 'This password reset link is invalid.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await sendPasswordReset(email.trim());
+      const result = await resetPassword(token, password.trim());
       
       if (result.success) {
-        setLinkSent(true);
-        Alert.alert('Reset Link Sent', 'A password reset link has been sent to your email address. Please check your email and follow the instructions to reset your password.');
+        Alert.alert(
+          'Password Reset Successful',
+          'Your password has been reset successfully. You can now sign in with your new password.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/signin')
+            }
+          ]
+        );
       } else {
-        Alert.alert('Error', result.error || 'Failed to send reset link.');
+        Alert.alert('Reset Failed', result.error || 'Failed to reset password.');
       }
     } catch {
-      Alert.alert('Error', 'Failed to send reset link. Please try again.');
+      Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -58,55 +79,57 @@ export default function ForgotPasswordScreen() {
             </TouchableOpacity>
 
             <View style={styles.header}>
-              <Text style={styles.title}>Forgot Password</Text>
+              <Text style={styles.title}>Reset Password</Text>
               <Text style={styles.subtitle}>
-                {linkSent 
-                  ? 'A password reset link has been sent to your email address. Please check your inbox and follow the instructions.'
-                  : 'Enter your email address and we\'ll send you a secure link to reset your password.'
-                }
+                Enter your new password below. Make sure it's at least 6 characters long.
               </Text>
             </View>
 
             <View style={styles.form}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email Address</Text>
+                <Text style={styles.inputLabel}>New Password</Text>
                 <View style={styles.inputContainer}>
-                  <Mail size={20} color="#6B7280" style={styles.inputIcon} />
+                  <Lock size={20} color="#6B7280" style={styles.inputIcon} />
                   <TextInput
                     style={styles.textInput}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="your@email.com"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter new password"
                     placeholderTextColor="#9CA3AF"
-                    keyboardType="email-address"
+                    secureTextEntry
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!linkSent}
                   />
                 </View>
               </View>
 
-              {!linkSent && (
-                <TouchableOpacity 
-                  style={[styles.sendButton, isLoading && styles.sendButtonDisabled]} 
-                  onPress={handleSendResetLink}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.sendButtonText}>
-                    {isLoading ? 'Sending Link...' : 'Send Reset Link'}
-                  </Text>
-                  {!isLoading && <ArrowRight size={20} color="#FFFFFF" />}
-                </TouchableOpacity>
-              )}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm New Password</Text>
+                <View style={styles.inputContainer}>
+                  <Lock size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.textInput}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Confirm new password"
+                    placeholderTextColor="#9CA3AF"
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-              {linkSent && (
-                <TouchableOpacity 
-                  style={styles.continueButton}
-                  onPress={() => router.push('/signin')}
-                >
-                  <Text style={styles.continueButtonText}>Back to Sign In</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity 
+                style={[styles.resetButton, isLoading && styles.resetButtonDisabled]} 
+                onPress={handleResetPassword}
+                disabled={isLoading}
+              >
+                <Text style={styles.resetButtonText}>
+                  {isLoading ? 'Resetting Password...' : 'Reset Password'}
+                </Text>
+                {!isLoading && <ArrowRight size={20} color="#FFFFFF" />}
+              </TouchableOpacity>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -184,7 +207,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
-  sendButton: {
+  resetButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -194,24 +217,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
-  sendButtonDisabled: {
+  resetButtonDisabled: {
     backgroundColor: '#9CA3AF',
     opacity: 0.6,
   },
-  sendButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  continueButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#10B981',
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  continueButtonText: {
+  resetButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',

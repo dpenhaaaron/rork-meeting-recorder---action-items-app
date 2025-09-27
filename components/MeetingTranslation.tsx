@@ -67,7 +67,7 @@ const supportedLanguages = [
 ];
 
 export default function MeetingTranslation({ artifacts }: MeetingTranslationProps) {
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('es');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [showLanguageSelector, setShowLanguageSelector] = useState<boolean>(false);
   const [translatedContent, setTranslatedContent] = useState<TranslatedContent | null>(null);
   const [isTranslating, setIsTranslating] = useState<boolean>(false);

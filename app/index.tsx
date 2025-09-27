@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, StyleSheet, Animated, useWindowDimensions, View } from 'react-native';
+import { Text, StyleSheet, Animated, useWindowDimensions, View, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/auth-store';
@@ -65,7 +65,7 @@ export default function Splash() {
   return (
     <View style={[styles.safeContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <LinearGradient
-        colors={['#FF6B6B', '#FF8E53', '#FF6B35']}
+        colors={['#F9FAFB', '#E5E7EB']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.container}
@@ -79,7 +79,13 @@ export default function Splash() {
             }
           ]}
         >
+          <Image
+            source={{ uri: 'https://r2-pub.rork.com/generated-images/e3cdc382-7bf9-4b69-afc8-4afee3932219.png' }}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.logo}>Convai</Text>
+          <Text style={styles.tagline}>AI-Powered Meeting Intelligence</Text>
         </Animated.View>
       </LinearGradient>
     </View>
@@ -89,7 +95,7 @@ export default function Splash() {
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#F9FAFB',
   },
   container: {
     flex: 1,
@@ -100,13 +106,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  logoImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 24,
+  },
   logo: {
-    fontSize: 72,
-    fontWeight: '300',
-    color: '#FFFFFF',
-    fontStyle: 'italic',
-    letterSpacing: 4,
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -1,
     textAlign: 'center',
-    fontFamily: 'System',
+    marginBottom: 8,
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });

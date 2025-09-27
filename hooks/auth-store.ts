@@ -14,7 +14,9 @@ export interface User {
   createdAt: string;
   isEmailVerified: boolean;
   isAdmin: boolean;
-  verificationCode?: string;
+  passwordHash?: string;
+  resetToken?: string;
+  resetTokenExpiry?: string;
 }
 
 export interface AuthState {
@@ -53,10 +55,32 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, []);
 
-  const signUp = useCallback(async (email: string, fullName: string, location: string, locationCoords?: { latitude: number; longitude: number }) => {
+  const signUp = useCallback(async (email: string, fullName: string, location: string, password: string, locationCoords?: { latitude: number; longitude: number }) => {
     try {
-      const isAdmin = email.toLowerCase().startsWith('admin@');
-      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      // Check if user already exists
+      const keys = await AsyncStorage.getAllKeys();
+      const userKeys = keys.filter(key => key.startsWith('user_'));
+      const userData = await AsyncStorage.multiGet(userKeys);
+      
+      const existingUser = userData.find(([key, value]) => {
+        if (value) {
+          try {
+            const user = JSON.parse(value);
+            return user.email === email;
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      });
+      
+      if (existingUser) {
+        return { success: false, error: 'An account with this email already exists' };
+      }
+
+      const isAdmin = email.toLowerCase() === 'admin@convai.com';
+      // Simple password hashing (in production, use bcrypt)
+      const passwordHash = btoa(password + 'salt_convai_2024');
       
       const user: User = {
         id: Date.now().toString(),
@@ -65,31 +89,47 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         location,
         locationCoords,
         createdAt: new Date().toISOString(),
-        isEmailVerified: false,
+        isEmailVerified: true, // No email verification needed
         isAdmin,
-        verificationCode,
+        passwordHash,
       };
 
       await AsyncStorage.setItem(`user_${user.id}`, JSON.stringify(user));
-      await AsyncStorage.setItem('pending_verification', JSON.stringify(user));
       
-      console.log(`Verification email sent to ${email} with code: ${verificationCode}`);
+      console.log(`Account created for ${email}`);
       
-      setAuthState({
-        user: null,
-        isLoading: false,
-        isAuthenticated: false,
-      });
-
-      return { success: true, needsVerification: true, email };
+      return { success: true };
     } catch (error) {
       console.error('Sign up failed:', error);
       return { success: false, error: 'Failed to create account' };
     }
   }, []);
 
-  const signIn = useCallback(async (email: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
+      // Handle admin account
+      if (email.toLowerCase() === 'admin@convai.com' && password === 'Timothyruthelel1@') {
+        const adminUser: User = {
+          id: 'admin_001',
+          email: 'admin@convai.com',
+          fullName: 'Admin User',
+          location: 'System',
+          createdAt: new Date().toISOString(),
+          isEmailVerified: true,
+          isAdmin: true,
+          passwordHash: btoa('Timothyruthelel1@' + 'salt_convai_2024'),
+        };
+        
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminUser));
+        
+        setAuthState({
+          user: adminUser,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+        return { success: true };
+      }
+
       const keys = await AsyncStorage.getAllKeys();
       const userKeys = keys.filter(key => key.startsWith('user_'));
       const userData = await AsyncStorage.multiGet(userKeys);
@@ -98,7 +138,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         if (value) {
           try {
             const user = JSON.parse(value);
-            return user.email === email && user.isEmailVerified;
+            const expectedHash = btoa(password + 'salt_convai_2024');
+            return user.email === email && user.passwordHash === expectedHash;
           } catch {
             return false;
           }
@@ -118,7 +159,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         return { success: true };
       }
       
-      return { success: false, error: 'Account not found or email not verified. Please sign up or verify your email first.' };
+      return { success: false, error: 'Invalid email or password' };
     } catch (error) {
       console.error('Sign in failed:', error);
       return { success: false, error: 'Failed to sign in' };
@@ -138,74 +179,114 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, []);
 
-  const verifyEmail = useCallback(async (code: string, email?: string) => {
-    try {
-      const pendingData = await AsyncStorage.getItem('pending_verification');
-      if (!pendingData) {
-        return { success: false, error: 'No pending verification found' };
-      }
-      
-      const pendingUser = JSON.parse(pendingData) as User;
-      
-      if (email && pendingUser.email !== email) {
-        return { success: false, error: 'Email does not match pending verification' };
-      }
-      
-      if (code === pendingUser.verificationCode) {
-        const updatedUser = { ...pendingUser, isEmailVerified: true };
-        delete updatedUser.verificationCode;
-        
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
-        await AsyncStorage.setItem(`user_${updatedUser.id}`, JSON.stringify(updatedUser));
-        await AsyncStorage.removeItem('pending_verification');
-        
-        setAuthState({
-          user: updatedUser,
-          isLoading: false,
-          isAuthenticated: true,
-        });
-        
-        return { success: true };
-      }
-      return { success: false, error: 'Invalid verification code' };
-    } catch (error) {
-      console.error('Email verification failed:', error);
-      return { success: false, error: 'Failed to verify email' };
-    }
-  }, []);
-
   const sendPasswordReset = useCallback(async (email: string) => {
     try {
-      console.log(`Password reset email sent to ${email}`);
-      return { success: true };
+      const keys = await AsyncStorage.getAllKeys();
+      const userKeys = keys.filter(key => key.startsWith('user_'));
+      const userData = await AsyncStorage.multiGet(userKeys);
+      
+      const foundUser = userData.find(([key, value]) => {
+        if (value) {
+          try {
+            const user = JSON.parse(value);
+            return user.email === email;
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      });
+      
+      if (foundUser && foundUser[1]) {
+        const user = JSON.parse(foundUser[1]);
+        const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const resetTokenExpiry = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        
+        const updatedUser = {
+          ...user,
+          resetToken,
+          resetTokenExpiry,
+        };
+        
+        await AsyncStorage.setItem(`user_${user.id}`, JSON.stringify(updatedUser));
+        
+        console.log(`Password reset link sent to ${email}`);
+        console.log(`Reset token: ${resetToken}`);
+        
+        return { success: true, resetToken };
+      }
+      
+      return { success: false, error: 'No account found with this email address' };
     } catch (error) {
       console.error('Password reset failed:', error);
       return { success: false, error: 'Failed to send password reset email' };
     }
   }, []);
 
-  const resendVerificationCode = useCallback(async (email: string) => {
+  const resetPassword = useCallback(async (token: string, newPassword: string) => {
     try {
-      const pendingData = await AsyncStorage.getItem('pending_verification');
-      if (!pendingData) {
-        return { success: false, error: 'No pending verification found' };
+      const keys = await AsyncStorage.getAllKeys();
+      const userKeys = keys.filter(key => key.startsWith('user_'));
+      const userData = await AsyncStorage.multiGet(userKeys);
+      
+      const foundUser = userData.find(([key, value]) => {
+        if (value) {
+          try {
+            const user = JSON.parse(value);
+            return user.resetToken === token && new Date(user.resetTokenExpiry) > new Date();
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      });
+      
+      if (foundUser && foundUser[1]) {
+        const user = JSON.parse(foundUser[1]);
+        const newPasswordHash = btoa(newPassword + 'salt_convai_2024');
+        
+        const updatedUser = {
+          ...user,
+          passwordHash: newPasswordHash,
+          resetToken: undefined,
+          resetTokenExpiry: undefined,
+        };
+        
+        await AsyncStorage.setItem(`user_${user.id}`, JSON.stringify(updatedUser));
+        
+        return { success: true };
       }
       
-      const pendingUser = JSON.parse(pendingData) as User;
-      if (pendingUser.email !== email) {
-        return { success: false, error: 'Email does not match pending verification' };
-      }
-      
-      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-      pendingUser.verificationCode = newCode;
-      
-      await AsyncStorage.setItem('pending_verification', JSON.stringify(pendingUser));
-      console.log(`New verification code sent to ${email}: ${newCode}`);
-      
-      return { success: true };
+      return { success: false, error: 'Invalid or expired reset token' };
     } catch (error) {
-      console.error('Resend verification failed:', error);
-      return { success: false, error: 'Failed to resend verification code' };
+      console.error('Password reset failed:', error);
+      return { success: false, error: 'Failed to reset password' };
+    }
+  }, []);
+
+  const getAllUsers = useCallback(async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const userKeys = keys.filter(key => key.startsWith('user_'));
+      const userData = await AsyncStorage.multiGet(userKeys);
+      
+      const users = userData
+        .map(([key, value]) => {
+          if (value) {
+            try {
+              return JSON.parse(value);
+            } catch {
+              return null;
+            }
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
+      return users;
+    } catch (error) {
+      console.error('Failed to get users:', error);
+      return [];
     }
   }, []);
 
@@ -225,18 +306,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     signUp,
     signIn,
     signOut,
-    verifyEmail,
     sendPasswordReset,
-    resendVerificationCode,
+    resetPassword,
+    getAllUsers,
   }), [
     authState,
     isHydrated,
     signUp,
     signIn,
     signOut,
-    verifyEmail,
     sendPasswordReset,
-    resendVerificationCode,
+    resetPassword,
+    getAllUsers,
   ]);
 
   return contextValue;

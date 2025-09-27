@@ -2,18 +2,24 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { Mail, ArrowRight } from 'lucide-react-native';
+import { Mail, ArrowRight, Lock } from 'lucide-react-native';
 
 import { useAuth } from '@/hooks/auth-store';
 
 export default function SignInScreen() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignIn = async () => {
     if (!email.trim()) {
       Alert.alert('Missing Email', 'Please enter your email address.');
+      return;
+    }
+
+    if (!password.trim()) {
+      Alert.alert('Missing Password', 'Please enter your password.');
       return;
     }
 
@@ -24,7 +30,7 @@ export default function SignInScreen() {
 
     setIsLoading(true);
     try {
-      const result = await signIn(email.trim());
+      const result = await signIn(email.trim(), password.trim());
       
       if (result.success) {
         router.replace('/(tabs)/home');
@@ -67,6 +73,23 @@ export default function SignInScreen() {
                   placeholder="your@email.com"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color="#6B7280" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
                 />

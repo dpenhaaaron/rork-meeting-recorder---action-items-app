@@ -9,7 +9,7 @@ import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } f
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 20 * 60; // 20 minutes in seconds - increased for better reliability
+const MAX_RECORDING_DURATION = 60 * 60; // 60 minutes in seconds - increased for better reliability
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -403,7 +403,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 20-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 60-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -486,7 +486,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 20-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 60-minute limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;

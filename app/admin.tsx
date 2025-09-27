@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { Users, Mail, MapPin, Calendar, ArrowLeft, Trash2 } from 'lucide-react-native';
+import { Users, Mail, MapPin, Calendar, ArrowLeft, Trash2, Activity, MessageSquare, Globe, CheckCircle, Target, Zap } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AdminUser {
@@ -13,8 +13,36 @@ interface AdminUser {
   createdAt: string;
 }
 
+interface AdminMetrics {
+  totalUsers: number;
+  activeUsers: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+  };
+  totalConversations: number;
+  totalTranslations: number;
+  totalDecisions: number;
+  totalActions: number;
+  totalDownloads: {
+    total: number;
+    ios: number;
+    android: number;
+    web: number;
+  };
+}
+
 export default function AdminScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [metrics, setMetrics] = useState<AdminMetrics>({
+    totalUsers: 0,
+    activeUsers: { daily: 0, weekly: 0, monthly: 0 },
+    totalConversations: 0,
+    totalTranslations: 0,
+    totalDecisions: 0,
+    totalActions: 0,
+    totalDownloads: { total: 0, ios: 0, android: 0, web: 0 },
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -64,7 +92,31 @@ export default function AdminScreen() {
         },
       ];
 
-      setUsers([...loadedUsers, ...mockUsers]);
+      const allUsers = [...loadedUsers, ...mockUsers];
+      setUsers(allUsers);
+      
+      // Generate mock metrics based on user data
+      const totalUsers = allUsers.length;
+      const mockMetrics: AdminMetrics = {
+        totalUsers,
+        activeUsers: {
+          daily: Math.floor(totalUsers * 0.3),
+          weekly: Math.floor(totalUsers * 0.6),
+          monthly: Math.floor(totalUsers * 0.8),
+        },
+        totalConversations: Math.floor(totalUsers * 15.2), // ~15 conversations per user
+        totalTranslations: Math.floor(totalUsers * 8.7), // ~9 translations per user
+        totalDecisions: Math.floor(totalUsers * 12.3), // ~12 decisions per user
+        totalActions: Math.floor(totalUsers * 18.9), // ~19 actions per user
+        totalDownloads: {
+          total: Math.floor(totalUsers * 1.8), // Some users download multiple times
+          ios: Math.floor(totalUsers * 0.7),
+          android: Math.floor(totalUsers * 0.8),
+          web: Math.floor(totalUsers * 0.3),
+        },
+      };
+      
+      setMetrics(mockMetrics);
     } catch (error) {
       console.error('Failed to load users:', error);
       Alert.alert('Error', 'Failed to load user data');
@@ -130,11 +182,84 @@ export default function AdminScreen() {
           <View style={styles.placeholder} />
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
+        <ScrollView 
+          style={styles.metricsContainer}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.metricsContent}
+        >
+          <View style={styles.metricCard}>
             <Users size={24} color="#3B82F6" />
-            <Text style={styles.statNumber}>{users.length}</Text>
-            <Text style={styles.statLabel}>Total Users</Text>
+            <Text style={styles.metricNumber}>{metrics.totalUsers}</Text>
+            <Text style={styles.metricLabel}>Total Users</Text>
+          </View>
+          
+          <View style={styles.metricCard}>
+            <Activity size={24} color="#10B981" />
+            <Text style={styles.metricNumber}>{metrics.activeUsers.daily}</Text>
+            <Text style={styles.metricLabel}>Daily Active</Text>
+          </View>
+          
+          <View style={styles.metricCard}>
+            <MessageSquare size={24} color="#F59E0B" />
+            <Text style={styles.metricNumber}>{metrics.totalConversations}</Text>
+            <Text style={styles.metricLabel}>Conversations</Text>
+          </View>
+          
+          <View style={styles.metricCard}>
+            <Globe size={24} color="#8B5CF6" />
+            <Text style={styles.metricNumber}>{metrics.totalTranslations}</Text>
+            <Text style={styles.metricLabel}>Translations</Text>
+          </View>
+          
+          <View style={styles.metricCard}>
+            <Target size={24} color="#EF4444" />
+            <Text style={styles.metricNumber}>{metrics.totalDecisions}</Text>
+            <Text style={styles.metricLabel}>Decisions</Text>
+          </View>
+          
+          <View style={styles.metricCard}>
+            <Zap size={24} color="#06B6D4" />
+            <Text style={styles.metricNumber}>{metrics.totalActions}</Text>
+            <Text style={styles.metricLabel}>Actions</Text>
+          </View>
+        </ScrollView>
+        
+        <View style={styles.additionalMetrics}>
+          <Text style={styles.sectionTitle}>App Downloads</Text>
+          <View style={styles.downloadStats}>
+            <View style={styles.downloadStat}>
+              <Text style={styles.downloadNumber}>{metrics.totalDownloads.total}</Text>
+              <Text style={styles.downloadLabel}>Total</Text>
+            </View>
+            <View style={styles.downloadStat}>
+              <Text style={styles.downloadNumber}>{metrics.totalDownloads.ios}</Text>
+              <Text style={styles.downloadLabel}>iOS</Text>
+            </View>
+            <View style={styles.downloadStat}>
+              <Text style={styles.downloadNumber}>{metrics.totalDownloads.android}</Text>
+              <Text style={styles.downloadLabel}>Android</Text>
+            </View>
+            <View style={styles.downloadStat}>
+              <Text style={styles.downloadNumber}>{metrics.totalDownloads.web}</Text>
+              <Text style={styles.downloadLabel}>Web</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.sectionTitle}>Active Users</Text>
+          <View style={styles.activeUserStats}>
+            <View style={styles.activeUserStat}>
+              <Text style={styles.activeUserNumber}>{metrics.activeUsers.daily}</Text>
+              <Text style={styles.activeUserLabel}>Daily</Text>
+            </View>
+            <View style={styles.activeUserStat}>
+              <Text style={styles.activeUserNumber}>{metrics.activeUsers.weekly}</Text>
+              <Text style={styles.activeUserLabel}>Weekly</Text>
+            </View>
+            <View style={styles.activeUserStat}>
+              <Text style={styles.activeUserNumber}>{metrics.activeUsers.monthly}</Text>
+              <Text style={styles.activeUserLabel}>Monthly</Text>
+            </View>
           </View>
         </View>
 
@@ -223,28 +348,90 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
-  statsContainer: {
-    padding: 24,
+  metricsContainer: {
+    paddingVertical: 16,
   },
-  statCard: {
+  metricsContent: {
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  metricCard: {
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    padding: 16,
     borderRadius: 12,
     alignItems: 'center',
+    minWidth: 120,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 2,
   },
-  statNumber: {
-    fontSize: 32,
+  metricNumber: {
+    fontSize: 24,
     fontWeight: '700',
     color: '#111827',
     marginTop: 8,
   },
-  statLabel: {
-    fontSize: 14,
+  metricLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  additionalMetrics: {
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+  },
+  downloadStats: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  downloadStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  downloadNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  downloadLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  activeUserStats: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  activeUserStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  activeUserNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  activeUserLabel: {
+    fontSize: 12,
     color: '#6B7280',
     marginTop: 4,
   },

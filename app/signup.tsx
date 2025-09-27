@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { User, Mail, MapPin, ArrowRight, MapPinned } from 'lucide-react-native';
+import { User, Mail, MapPin, ArrowRight, MapPinned, Lock } from 'lucide-react-native';
 import * as Location from 'expo-location';
 
 import { useAuth } from '@/hooks/auth-store';
@@ -13,6 +13,8 @@ export default function SignUpScreen() {
     email: '',
     fullName: '',
     location: '',
+    password: '',
+    confirmPassword: '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
@@ -70,7 +72,7 @@ export default function SignUpScreen() {
   };
 
   const handleSignUp = async () => {
-    if (!formData.email.trim() || !formData.fullName.trim() || !formData.location.trim()) {
+    if (!formData.email.trim() || !formData.fullName.trim() || !formData.location.trim() || !formData.password.trim() || !formData.confirmPassword.trim()) {
       Alert.alert('Missing Information', 'Please fill in all fields.');
       return;
     }
@@ -80,30 +82,37 @@ export default function SignUpScreen() {
       return;
     }
 
+    if (formData.password.length < 6) {
+      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      Alert.alert('Password Mismatch', 'Passwords do not match.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const result = await signUp(
         formData.email.trim(), 
         formData.fullName.trim(), 
         formData.location.trim(),
+        formData.password.trim(),
         locationCoords
       );
       
-      if (result.success && result.needsVerification) {
-        // Navigate to email verification screen
+      if (result.success) {
         Alert.alert(
-          'Verify Your Email',
-          `A verification code has been sent to ${result.email}. Please check your email and enter the code to complete registration.`,
+          'Account Created',
+          'Your account has been created successfully. You can now sign in.',
           [
             {
               text: 'OK',
-              onPress: () => router.push(`/verify-email?email=${encodeURIComponent(result.email || '')}`)
+              onPress: () => router.replace('/signin')
             }
           ]
         );
-      } else if (result.success) {
-        // If no verification needed (shouldn't happen with new flow)
-        router.replace('/(tabs)/home');
       } else {
         Alert.alert('Sign Up Failed', result.error || 'Please try again.');
       }
@@ -193,6 +202,40 @@ export default function SignUpScreen() {
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="words"
                   editable={!useCurrentLocation}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color="#6B7280" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={formData.password}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Confirm Password</Text>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color="#6B7280" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={formData.confirmPassword}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
+                  placeholder="Confirm your password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
             </View>
