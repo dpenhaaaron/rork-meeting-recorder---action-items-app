@@ -37,18 +37,23 @@ export default function RecordingControls({
   };
   
   const getRemainingTime = (seconds: number): string => {
-    const maxDuration = 10 * 60; // 10 minutes for better reliability
+    const maxDuration = 4 * 60 * 60; // 4 hours for Bible study length
     const remaining = maxDuration - seconds;
-    if (remaining <= 0) return '0:00';
+    if (remaining <= 0) return '0:00:00';
     
-    const minutes = Math.floor(remaining / 60);
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
     const secs = remaining % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
   
   const isNearLimit = (seconds: number): boolean => {
-    const maxDuration = 10 * 60; // 10 minutes for better reliability
-    return seconds > maxDuration - 120; // Last 2 minutes
+    const maxDuration = 4 * 60 * 60; // 4 hours for Bible study length
+    return seconds > maxDuration - 600; // Last 10 minutes
   };
 
   const handlePress = (action: () => void) => {

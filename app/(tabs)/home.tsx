@@ -10,6 +10,7 @@ import { Meeting } from '@/types/meeting';
 import ConsentBanner from '@/components/ConsentBanner';
 import RecordingControls from '@/components/RecordingControls';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
+import RecordingNotes from '@/components/RecordingNotes';
 
 
 export default function HomeScreen() {
@@ -26,7 +27,11 @@ export default function HomeScreen() {
     resumeRecording, 
     stopRecording,
     processMeeting,
-    retryProcessing 
+    retryProcessing,
+    addNote,
+    addBookmark,
+    deleteNote,
+    deleteBookmark 
   } = useRecording();
   
   console.log('HomeScreen: Recording state:', { 
@@ -40,6 +45,10 @@ export default function HomeScreen() {
   const [attendees, setAttendees] = useState('');
   const [showConsent, setShowConsent] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
+  const [category, setCategory] = useState<string>('sermon');
+  const [speaker, setSpeaker] = useState<string>('');
+  const [location, setLocation] = useState<string>('');
+  const [tags, setTags] = useState<string>('');
 
   const supportedLanguages = [
     { code: 'en', name: 'English', flag: '🇺🇸' },
@@ -66,12 +75,27 @@ export default function HomeScreen() {
     }
 
     const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
+    const tagList = tags.split(',').map(tag => tag.trim()).filter(Boolean);
+    
+    // Create enhanced meeting object
+    const enhancedMeeting = {
+      title: meetingTitle,
+      attendees: attendeeList,
+      category,
+      speaker: speaker.trim() || undefined,
+      location: location.trim() || undefined,
+      tags: tagList.length > 0 ? tagList : undefined,
+    };
     
     startRecording(meetingTitle, attendeeList)
       .then(() => {
         setShowNewMeeting(false);
         setMeetingTitle('');
         setAttendees('');
+        setSpeaker('');
+        setLocation('');
+        setTags('');
+        setCategory('sermon');
       })
       .catch((error) => {
         Alert.alert('Recording Error', error.message);
@@ -144,31 +168,31 @@ export default function HomeScreen() {
     }
   };
 
-  // Show warning when approaching 15-minute limit
+  // Show warning when approaching 4-hour limit
   React.useEffect(() => {
     if (!state.isRecording) return;
     
     try {
-      if (state.duration === 10 * 60) { // 10 minutes
+      if (state.duration === 3 * 60 * 60) { // 3 hours
         try {
           Alert.alert(
             'Recording Limit Warning',
-            'Your recording will automatically stop in 5 minutes (15-minute limit). Consider stopping and starting a new recording if needed.',
+            'Your recording will automatically stop in 1 hour (4-hour limit). Consider stopping and starting a new recording if needed.',
             [{ text: 'OK' }]
           );
         } catch (alertError) {
-          console.warn('10-minute alert error:', alertError);
+          console.warn('3-hour alert error:', alertError);
         }
       }
-      if (state.duration === 14 * 60) { // 14 minutes
+      if (state.duration === 3.75 * 60 * 60) { // 3 hours 45 minutes
         try {
           Alert.alert(
-            'One Minute Warning',
-            'Your recording will stop in 1 minute. Please prepare to wrap up.',
+            'Fifteen Minute Warning',
+            'Your recording will stop in 15 minutes. Please prepare to wrap up.',
             [{ text: 'OK' }]
           );
         } catch (alertError) {
-          console.warn('1-minute alert error:', alertError);
+          console.warn('15-minute alert error:', alertError);
         }
       }
     } catch (error) {
@@ -245,6 +269,16 @@ export default function HomeScreen() {
                 Alert.alert('Highlight Added', 'This moment has been marked for review.');
               }}
             />
+            
+            <RecordingNotes
+              duration={state.duration}
+              notes={state.currentMeeting?.notes || []}
+              bookmarks={state.currentMeeting?.bookmarks || []}
+              onAddNote={addNote}
+              onAddBookmark={addBookmark}
+              onDeleteNote={deleteNote}
+              onDeleteBookmark={deleteBookmark}
+            />
           </View>
         ) : (
           <>
@@ -259,6 +293,62 @@ export default function HomeScreen() {
                     value={meetingTitle}
                     onChangeText={setMeetingTitle}
                     placeholder="e.g., Weekly Team Standup"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Category</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categorySelector}>
+                    {['sermon', 'bible-study', 'prayer', 'worship', 'conference', 'teaching', 'testimony', 'other'].map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryOption,
+                          category === cat && styles.selectedCategoryOption
+                        ]}
+                        onPress={() => setCategory(cat)}
+                      >
+                        <Text style={[
+                          styles.categoryName,
+                          category === cat && styles.selectedCategoryName
+                        ]}>
+                          {cat.charAt(0).toUpperCase() + cat.slice(1).replace('-', ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Speaker (optional)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={speaker}
+                    onChangeText={setSpeaker}
+                    placeholder="Pastor John Smith"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Location (optional)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={location}
+                    onChangeText={setLocation}
+                    placeholder="Main Sanctuary, Room 101"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Tags (optional)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={tags}
+                    onChangeText={setTags}
+                    placeholder="faith, hope, love (comma separated)"
                     placeholderTextColor="#9CA3AF"
                   />
                 </View>
@@ -326,7 +416,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 
                 <Text style={styles.quickStartText}>
-                  AI-powered meeting assistant with real-time transcription, smart summaries, and multi-language support
+                  AI-powered recording assistant for sermons, Bible studies, and spiritual gatherings with up to 4-hour recording capacity
                 </Text>
                 
                 {/* Feature Highlights */}
@@ -715,6 +805,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  categorySelector: {
+    marginTop: 8,
+  },
+  categoryOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+  },
+  selectedCategoryOption: {
+    borderColor: '#FF8C00',
+    backgroundColor: '#FFF7ED',
+  },
+  categoryName: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  selectedCategoryName: {
+    color: '#FF8C00',
+    fontWeight: '500',
   },
 
 });

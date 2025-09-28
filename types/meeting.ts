@@ -8,6 +8,12 @@ export interface Meeting {
   audioUri?: string;
   transcript?: Transcript;
   artifacts?: MeetingArtifacts;
+  category?: string;
+  tags?: string[];
+  notes?: Note[];
+  bookmarks?: Bookmark[];
+  speaker?: string;
+  location?: string;
 }
 
 export interface Attendee {
@@ -93,4 +99,19 @@ export interface RecordingState {
   duration: number;
   audioLevels: number[];
   currentMeeting?: Meeting;
+}
+
+export interface Note {
+  id: string;
+  text: string;
+  timestamp: number;
+  createdAt: string;
+}
+
+export interface Bookmark {
+  id: string;
+  title: string;
+  timestamp: number;
+  description?: string;
+  createdAt: string;
 }

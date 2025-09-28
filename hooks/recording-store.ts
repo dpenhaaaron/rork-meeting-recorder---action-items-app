@@ -4,12 +4,12 @@ import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import { Meeting, RecordingState, MeetingArtifacts } from '@/types/meeting';
+import { Meeting, RecordingState, MeetingArtifacts, Note, Bookmark } from '@/types/meeting';
 import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 60 * 60; // 60 minutes in seconds - increased for better reliability
+const MAX_RECORDING_DURATION = 4 * 60 * 60; // 4 hours in seconds - Bible study length
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -403,7 +403,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 60-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 4-hour limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -486,7 +486,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const newDuration = prev.duration + 1;
           
           if (newDuration >= MAX_RECORDING_DURATION) {
-            console.log('Recording reached 60-minute limit, auto-stopping for reliability...');
+            console.log('Recording reached 4-hour limit, auto-stopping for reliability...');
             if (durationInterval.current) {
               clearInterval(durationInterval.current);
               durationInterval.current = null;
@@ -917,6 +917,105 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     return processMeeting(meetingId);
   }, [saveMeetings, processMeeting]);
 
+  const addNote = useCallback(async (text: string, timestamp: number) => {
+    if (!state.currentMeeting) return;
+    
+    const note: Note = {
+      id: Date.now().toString(),
+      text,
+      timestamp,
+      createdAt: new Date().toISOString(),
+    };
+    
+    const updatedMeeting = {
+      ...state.currentMeeting,
+      notes: [...(state.currentMeeting.notes || []), note],
+    };
+    
+    setState(prev => ({
+      ...prev,
+      currentMeeting: updatedMeeting,
+    }));
+    
+    // Update in storage
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((m: Meeting) => 
+      m.id === state.currentMeeting?.id ? updatedMeeting : m
+    );
+    await saveMeetings(updatedMeetings);
+  }, [state.currentMeeting, saveMeetings]);
+
+  const addBookmark = useCallback(async (title: string, description: string, timestamp: number) => {
+    if (!state.currentMeeting) return;
+    
+    const bookmark: Bookmark = {
+      id: Date.now().toString(),
+      title,
+      timestamp,
+      description: description || undefined,
+      createdAt: new Date().toISOString(),
+    };
+    
+    const updatedMeeting = {
+      ...state.currentMeeting,
+      bookmarks: [...(state.currentMeeting.bookmarks || []), bookmark],
+    };
+    
+    setState(prev => ({
+      ...prev,
+      currentMeeting: updatedMeeting,
+    }));
+    
+    // Update in storage
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((m: Meeting) => 
+      m.id === state.currentMeeting?.id ? updatedMeeting : m
+    );
+    await saveMeetings(updatedMeetings);
+  }, [state.currentMeeting, saveMeetings]);
+
+  const deleteNote = useCallback(async (noteId: string) => {
+    if (!state.currentMeeting) return;
+    
+    const updatedMeeting = {
+      ...state.currentMeeting,
+      notes: (state.currentMeeting.notes || []).filter(note => note.id !== noteId),
+    };
+    
+    setState(prev => ({
+      ...prev,
+      currentMeeting: updatedMeeting,
+    }));
+    
+    // Update in storage
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((m: Meeting) => 
+      m.id === state.currentMeeting?.id ? updatedMeeting : m
+    );
+    await saveMeetings(updatedMeetings);
+  }, [state.currentMeeting, saveMeetings]);
+
+  const deleteBookmark = useCallback(async (bookmarkId: string) => {
+    if (!state.currentMeeting) return;
+    
+    const updatedMeeting = {
+      ...state.currentMeeting,
+      bookmarks: (state.currentMeeting.bookmarks || []).filter(bookmark => bookmark.id !== bookmarkId),
+    };
+    
+    setState(prev => ({
+      ...prev,
+      currentMeeting: updatedMeeting,
+    }));
+    
+    // Update in storage
+    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+    const updatedMeetings = currentMeetings.map((m: Meeting) => 
+      m.id === state.currentMeeting?.id ? updatedMeeting : m
+    );
+    await saveMeetings(updatedMeetings);
+  }, [state.currentMeeting, saveMeetings]);
+
   useEffect(() => {
     // Add hydration delay to prevent SSR mismatch
     const timer = setTimeout(() => {
@@ -999,6 +1098,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       processMeeting,
       retryProcessing,
       deleteMeeting,
+      addNote,
+      addBookmark,
+      deleteNote,
+      deleteBookmark,
     };
   }, [
     state,
@@ -1015,6 +1118,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     processMeeting,
     retryProcessing,
     deleteMeeting,
+    addNote,
+    addBookmark,
+    deleteNote,
+    deleteBookmark,
   ]);
 
   return value;
