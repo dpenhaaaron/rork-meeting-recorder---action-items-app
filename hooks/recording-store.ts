@@ -799,7 +799,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
-      const shouldUseStreaming = meeting.duration >= 600; // 10 minutes - use streaming for better reliability
+      const shouldUseStreaming = meeting.duration >= 180; // 3 minutes - use streaming for better reliability on longer recordings
       
       console.log('Starting transcription with:', {
         shouldUseStreaming,
