@@ -362,16 +362,19 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       let transcriptionText = '';
       let language = 'en';
       
-      if (result.text && typeof result.text === 'string') {
+      // Log the full result for debugging
+      console.log('Full transcription result:', JSON.stringify(result, null, 2));
+      
+      if (result.text && typeof result.text === 'string' && result.text.trim().length > 0) {
         transcriptionText = result.text;
-        language = result.language || 'en';
+        language = (result.language && typeof result.language === 'string') ? result.language : 'en';
         console.log('Found transcription in "text" field');
-      } else if (result.transcription && typeof result.transcription === 'string') {
+      } else if (result.transcription && typeof result.transcription === 'string' && result.transcription.trim().length > 0) {
         // Alternative response format
         transcriptionText = result.transcription;
         language = result.language || result.detected_language || 'en';
         console.log('Found transcription in "transcription" field');
-      } else if (result.transcript && typeof result.transcript === 'string') {
+      } else if (result.transcript && typeof result.transcript === 'string' && result.transcript.trim().length > 0) {
         // Another alternative response format
         transcriptionText = result.transcript;
         language = result.language || result.detected_language || 'en';
@@ -379,8 +382,19 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       } else {
         console.error('No valid text field found in response:', result);
         console.error('Available fields:', Object.keys(result));
-        console.error('Field types:', Object.keys(result).map(key => `${key}: ${typeof result[key]}`));
-        throw new Error('Invalid transcription response: no valid text field found. Available fields: ' + Object.keys(result).join(', '));
+        console.error('Field types:', Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', '));
+        console.error('Field values:', Object.keys(result).map(key => `${key}: ${JSON.stringify(result[key])}`).join(', '));
+        
+        // Check if text field exists but is empty or wrong type
+        if ('text' in result) {
+          console.error('text field exists but is invalid:', {
+            type: typeof result.text,
+            value: result.text,
+            length: typeof result.text === 'string' ? result.text.length : 'N/A'
+          });
+        }
+        
+        throw new Error(`Invalid transcription response: no valid text field found. Available fields: ${Object.keys(result).join(', ')}. Field types: ${Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', ')}`);
       }
       
       console.log('Transcription extracted:', {
