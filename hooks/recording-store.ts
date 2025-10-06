@@ -6,6 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { Meeting, RecordingState, MeetingArtifacts, Note, Bookmark } from '@/types/meeting';
 import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
+import { chunkedUploadService, UploadProgress } from '@/services/chunked-upload';
+import { progressTracker, ProcessingStatus } from '@/services/progress-tracker';
+import { validateAudioFile, shouldUseChunkedUpload, getOptimalRecordingConfig } from '@/services/audio-processing';
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
