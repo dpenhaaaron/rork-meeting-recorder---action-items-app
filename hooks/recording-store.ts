@@ -544,18 +544,28 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                 const meetingId = state.currentMeeting?.id;
                 if (meetingId && audioChunksRef.current.length > 0) {
                   try {
-                    const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                    const mimeType = mediaRecorder.mimeType || 'audio/webm';
+                    const blob = new Blob(audioChunksRef.current, { type: mimeType });
+                    console.log('Created audio blob:', { 
+                      meetingId, 
+                      size: blob.size, 
+                      type: blob.type,
+                      chunks: audioChunksRef.current.length 
+                    });
+                    
                     if (blob.size > 0) {
                       await storeAudioBlob(meetingId, blob);
-                      console.log('Stored web audio blob in IndexedDB:', { meetingId, size: blob.size });
+                      console.log('Stored web audio blob in IndexedDB:', { meetingId, size: blob.size, type: blob.type });
                       
                       const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
                       const updatedMeetings = currentMeetings.map((m: Meeting) => 
                         m.id === meetingId 
-                          ? { ...m, audioUri: `indexeddb://${meetingId}` }
+                          ? { ...m, audioUri: `indexeddb://${meetingId}`, mimeType: mimeType }
                           : m
                       );
                       await saveMeetings(updatedMeetings);
+                    } else {
+                      console.error('Audio blob is empty after recording');
                     }
                   } catch (e) {
                     console.error('Failed to persist web audio blob:', e);
@@ -768,12 +778,21 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           throw new Error('Audio file not found in browser storage.');
         }
         
+        const mimeType = meeting.mimeType || blob.type || 'audio/webm';
+        const extension = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+        
         console.log('Creating web audio file:', {
           blobSize: blob.size,
-          blobType: blob.type
+          blobType: blob.type,
+          mimeType: mimeType,
+          extension: extension
         });
         
-        audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+        if (blob.size < 1000) {
+          console.warn('Audio blob is very small:', blob.size, 'bytes - may be corrupted');
+        }
+        
+        audioFile = new File([blob], `recording.${extension}`, { type: mimeType });
       } else {
         const fileInfo = await FileSystem.getInfoAsync(meeting.audioUri);
         if (!fileInfo.exists) {

@@ -237,6 +237,16 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
           size: request.audio.size,
           type: request.audio.type
         });
+        
+        // Additional validation for web audio
+        if (request.audio.size === 0) {
+          throw new Error('Audio file is empty (0 bytes). The recording may have failed.');
+        }
+        
+        if (request.audio.size < 1000) {
+          console.warn('Audio file is very small:', request.audio.size, 'bytes - may not contain speech');
+        }
+        
         formData.append('audio', request.audio);
       }
       

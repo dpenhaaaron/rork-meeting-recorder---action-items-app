@@ -6,6 +6,7 @@ export interface Meeting {
   attendees: Attendee[];
   status: 'recording' | 'processing' | 'completed' | 'error';
   audioUri?: string;
+  mimeType?: string;
   transcript?: Transcript;
   artifacts?: MeetingArtifacts;
   category?: string;
