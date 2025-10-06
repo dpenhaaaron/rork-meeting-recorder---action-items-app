@@ -869,7 +869,9 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           stack: error.stack
         });
         
-        if (error.message.includes('Invalid transcript') || error.message.includes('too short')) {
+        if (error.message.includes('corrupted or empty')) {
+          throw new Error('Recording appears to be corrupted or contains no speech. Please try recording again with clear audio. Make sure to speak clearly into the microphone.');
+        } else if (error.message.includes('Invalid transcript') || error.message.includes('too short')) {
           throw new Error('The recording appears to be empty or too short. Please try recording again with clear audio.');
         } else if (error.message.includes('transcribe') || error.message.includes('Audio file')) {
           throw new Error('Failed to transcribe audio. Please check your internet connection and try again.');

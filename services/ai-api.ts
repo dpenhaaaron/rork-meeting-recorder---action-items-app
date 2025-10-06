@@ -385,13 +385,22 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         console.error('Field types:', Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', '));
         console.error('Field values:', Object.keys(result).map(key => `${key}: ${JSON.stringify(result[key])}`).join(', '));
         
-        // Check if text field exists but is empty or wrong type
+        // Check if text field exists but is empty
         if ('text' in result) {
+          const textValue = result.text;
+          const textType = typeof textValue;
+          const textLength = typeof textValue === 'string' ? textValue.length : 'N/A';
+          
           console.error('text field exists but is invalid:', {
-            type: typeof result.text,
-            value: result.text,
-            length: typeof result.text === 'string' ? result.text.length : 'N/A'
+            type: textType,
+            value: textValue,
+            length: textLength
           });
+          
+          // If text field exists but is empty, provide a more specific error
+          if (textType === 'string' && textLength === 0) {
+            throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
+          }
         }
         
         throw new Error(`Invalid transcription response: no valid text field found. Available fields: ${Object.keys(result).join(', ')}. Field types: ${Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', ')}`);
