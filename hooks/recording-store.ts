@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Meeting, RecordingState, MeetingArtifacts, Note, Bookmark } from '@/types/meeting';
 import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
 import { chunkedUploadService, UploadProgress } from '@/services/chunked-upload';
