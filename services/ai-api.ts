@@ -1,4 +1,5 @@
 import { MeetingArtifacts, EmailDraft } from '@/types/meeting';
+import { generateText } from '@rork-ai/toolkit-sdk';
 
 const AI_BASE_URL = 'https://toolkit.rork.com';
 const MAX_RETRIES = 2;
@@ -149,7 +150,7 @@ const splitTranscriptIntoChunks = (transcript: string): string[] => {
 
 export const transcribeAudio = async (request: TranscribeRequest): Promise<TranscribeResponse> => {
   return retryWithBackoff(async () => {
-    console.log('Starting transcription request...');
+    console.log('Starting Gemini 2.5 Flash transcription request...');
     
     // Validate request object
     if (!request || typeof request !== 'object') {
@@ -174,7 +175,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       if (request.audio.size === 0) {
         throw new Error('Audio file is empty (0 bytes)');
       }
-      if (request.audio.size < 100) { // Less than 100 bytes - very lenient
+      if (request.audio.size < 100) {
         throw new Error('Audio file is too small (less than 100 bytes)');
       }
       console.log('Web audio file size:', request.audio.size, 'bytes');
@@ -182,7 +183,6 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
     
     // Enhanced validation for mobile files
     if ('uri' in request.audio) {
-      // Check for empty or invalid URI
       if (!request.audio.uri || typeof request.audio.uri !== 'string') {
         throw new Error('Audio file URI is missing or invalid');
       }
@@ -205,40 +205,40 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       });
     }
     
-    let formData: FormData;
-    
     try {
-      formData = new FormData();
-    } catch (formDataError) {
-      console.error('Failed to create FormData:', formDataError);
-      throw new Error('Failed to create form data for upload');
-    }
-    
-    try {
-      // Handle different audio formats properly
+      // Convert audio file to base64
+      let base64Audio: string;
+      let mimeType: string;
+      
       if ('uri' in request.audio) {
-        // Mobile platform - properly format the file object
-        const audioFile = {
-          uri: request.audio.uri,
-          name: request.audio.name,
-          type: request.audio.type
-        } as any;
+        // Mobile platform - read file and convert to base64
+        const FileSystem = require('expo-file-system');
+        const audioUri = request.audio.uri;
         
-        console.log('Preparing mobile audio file for upload:', audioFile);
-        formData.append('audio', audioFile);
+        console.log('Reading audio file from URI:', audioUri);
+        const base64Data = await FileSystem.readAsStringAsync(audioUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        if (!base64Data || base64Data.length === 0) {
+          throw new Error('Failed to read audio file: empty base64 data');
+        }
+        
+        base64Audio = base64Data;
+        mimeType = request.audio.type;
+        console.log('Mobile audio converted to base64, length:', base64Audio.length);
       } else {
         // Web platform - File object
         if (!(request.audio instanceof File)) {
           throw new Error('Web audio must be a File object');
         }
         
-        console.log('Preparing web audio file for upload:', {
+        console.log('Converting web audio to base64:', {
           name: request.audio.name,
           size: request.audio.size,
           type: request.audio.type
         });
         
-        // Additional validation for web audio
         if (request.audio.size === 0) {
           throw new Error('Audio file is empty (0 bytes). The recording may have failed.');
         }
@@ -247,202 +247,67 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
           console.warn('Audio file is very small:', request.audio.size, 'bytes - may not contain speech');
         }
         
-        formData.append('audio', request.audio);
+        // Convert File to base64
+        const arrayBuffer = await request.audio.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        base64Audio = btoa(binary);
+        mimeType = request.audio.type || 'audio/webm';
+        console.log('Web audio converted to base64, length:', base64Audio.length);
       }
       
-      if (request.language && typeof request.language === 'string' && request.language.trim()) {
-        formData.append('language', request.language.trim());
-        console.log('Language specified:', request.language);
-      }
-    } catch (formError) {
-      console.error('Failed to prepare FormData:', formError);
-      throw new Error('Failed to prepare audio file for upload: ' + (formError instanceof Error ? formError.message : 'Unknown error'));
-    }
-
-    console.log('Sending transcription request to:', `${AI_BASE_URL}/stt/transcribe/`);
-    
-    // Add timeout for transcription requests - 10 minutes should be enough for most recordings
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('Transcription request timed out after 10 minutes');
-      controller.abort();
-    }, 10 * 60 * 1000); // 10 minutes timeout
-    
-    try {
-      const response = await fetch(`${AI_BASE_URL}/stt/transcribe/`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
+      console.log('Sending transcription request to Gemini 2.5 Flash...');
       
-      clearTimeout(timeoutId);
-      console.log('Transcription response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      if (!response.ok) {
-        let errorText = 'Unknown error';
-        let errorDetails = '';
-        
-        try {
-          const errorResponse = await response.text();
-          errorText = errorResponse;
-          errorDetails = errorResponse;
-          
-          // Try to parse as JSON to get more detailed error info
-          try {
-            const errorJson = JSON.parse(errorResponse);
-            if (errorJson.error) {
-              errorText = errorJson.error;
-            } else if (errorJson.message) {
-              errorText = errorJson.message;
-            } else if (errorJson.detail) {
-              errorText = errorJson.detail;
-            }
-          } catch {
-            // Keep the raw text if it's not JSON
+      // Use generateText with audio
+      const transcriptionText = await generateText({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Please transcribe this audio. Return only the transcription text, no additional commentary or formatting.'
+              },
+              {
+                type: 'image',
+                image: `data:${mimeType};base64,${base64Audio}`
+              }
+            ]
           }
-        } catch {
-          errorText = 'Unable to read error response';
-        }
-        
-        console.error('Transcription API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-          fullResponse: errorDetails
-        });
-        
-        // Provide more specific error messages
-        if (response.status === 400) {
-          throw new Error(`Invalid audio file format or corrupted file: ${errorText}`);
-        } else if (response.status === 413) {
-          throw new Error('Audio file is too large. Maximum size is 25MB.');
-        } else if (response.status === 415) {
-          throw new Error('Unsupported audio format. Please use MP3, WAV, M4A, or WebM.');
-        } else if (response.status >= 500) {
-          throw new Error('Transcription service is temporarily unavailable. Please try again later.');
-        } else {
-          throw new Error(`Transcription failed (${response.status}): ${errorText}`);
-        }
-      }
-
-      let result: any;
-      let responseText: string;
-      
-      try {
-        responseText = await response.text();
-        if (!responseText || typeof responseText !== 'string') {
-          throw new Error('Empty or invalid response from server');
-        }
-        console.log('Raw transcription response:', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
-      } catch (textError) {
-        console.error('Failed to read response text:', textError);
-        throw new Error('Failed to read server response');
-      }
-      
-      try {
-        result = JSON.parse(responseText);
-        if (!result || typeof result !== 'object') {
-          throw new Error('Response is not a valid JSON object');
-        }
-      } catch (parseError) {
-        console.error('Failed to parse transcription response as JSON:', parseError);
-        console.error('Response text that failed to parse:', responseText);
-        throw new Error('Invalid transcription response: server returned invalid JSON - ' + (parseError instanceof Error ? parseError.message : 'Unknown parsing error'));
-      }
-      
-      // Log the actual response structure for debugging
-      console.log('Transcription API response structure:', {
-        keys: Object.keys(result || {}),
-        hasText: 'text' in (result || {}),
-        hasTranscription: 'transcription' in (result || {}),
-        hasTranscript: 'transcript' in (result || {})
+        ]
       });
       
-      // Validate response structure with more detailed error info
-      if (!result || typeof result !== 'object') {
-        console.error('Invalid response format:', result);
-        throw new Error('Invalid transcription response: response is not an object');
-      }
-      
-      // Handle different possible response formats
-      let transcriptionText = '';
-      let language = 'en';
-      
-      // Log the full result for debugging
-      console.log('Full transcription result:', JSON.stringify(result, null, 2));
-      
-      if (result.text && typeof result.text === 'string' && result.text.trim().length > 0) {
-        transcriptionText = result.text;
-        language = (result.language && typeof result.language === 'string') ? result.language : 'en';
-        console.log('Found transcription in "text" field');
-      } else if (result.transcription && typeof result.transcription === 'string' && result.transcription.trim().length > 0) {
-        // Alternative response format
-        transcriptionText = result.transcription;
-        language = result.language || result.detected_language || 'en';
-        console.log('Found transcription in "transcription" field');
-      } else if (result.transcript && typeof result.transcript === 'string' && result.transcript.trim().length > 0) {
-        // Another alternative response format
-        transcriptionText = result.transcript;
-        language = result.language || result.detected_language || 'en';
-        console.log('Found transcription in "transcript" field');
-      } else {
-        console.error('No valid text field found in response:', result);
-        console.error('Available fields:', Object.keys(result));
-        console.error('Field types:', Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', '));
-        console.error('Field values:', Object.keys(result).map(key => `${key}: ${JSON.stringify(result[key])}`).join(', '));
-        
-        // Check if text field exists but is empty
-        if ('text' in result) {
-          const textValue = result.text;
-          const textType = typeof textValue;
-          const textLength = typeof textValue === 'string' ? textValue.length : 'N/A';
-          
-          console.error('text field exists but is invalid:', {
-            type: textType,
-            value: textValue,
-            length: textLength
-          });
-          
-          // If text field exists but is empty, provide a more specific error
-          if (textType === 'string' && textLength === 0) {
-            throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
-          }
-        }
-        
-        throw new Error(`Invalid transcription response: no valid text field found. Available fields: ${Object.keys(result).join(', ')}. Field types: ${Object.keys(result).map(key => `${key}: ${typeof result[key]}`).join(', ')}`);
-      }
-      
-      console.log('Transcription extracted:', {
+      console.log('Gemini transcription received:', {
         length: transcriptionText.length,
-        language: language,
         preview: transcriptionText.substring(0, 100) + (transcriptionText.length > 100 ? '...' : '')
       });
       
       // Validate transcription text
+      if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
+        throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
+      }
+      
       const validatedText = validateTranscript(transcriptionText);
       
       return {
         text: validatedText,
-        language: language
+        language: request.language || 'en'
       };
     } catch (error) {
-      clearTimeout(timeoutId);
-      
       if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new Error('Transcription timed out after 10 minutes. The audio file may be too large or corrupted. Please try recording shorter segments (under 20 minutes) for better reliability.');
-        }
         if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
           throw new Error('Network error: Please check your internet connection and try again.');
         }
+        if (error.message.includes('Invalid transcript') || error.message.includes('corrupted or empty')) {
+          throw error;
+        }
       }
       
-      console.error('Transcription request failed:', error);
-      throw error;
+      console.error('Gemini transcription request failed:', error);
+      throw new Error('Transcription failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   });
 };
