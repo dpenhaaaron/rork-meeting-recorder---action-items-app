@@ -45,10 +45,6 @@ export default function HomeScreen() {
   const [attendees, setAttendees] = useState('');
   const [showConsent, setShowConsent] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
-  const [category, setCategory] = useState<string>('sermon');
-  const [speaker, setSpeaker] = useState<string>('');
-  const [location, setLocation] = useState<string>('');
-  const [tags, setTags] = useState<string>('');
 
   const supportedLanguages = [
     { code: 'en', name: 'English', flag: '🇺🇸' },
@@ -75,27 +71,12 @@ export default function HomeScreen() {
     }
 
     const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
-    const tagList = tags.split(',').map(tag => tag.trim()).filter(Boolean);
-    
-    // Create enhanced meeting object
-    const enhancedMeeting = {
-      title: meetingTitle,
-      attendees: attendeeList,
-      category,
-      speaker: speaker.trim() || undefined,
-      location: location.trim() || undefined,
-      tags: tagList.length > 0 ? tagList : undefined,
-    };
     
     startRecording(meetingTitle, attendeeList)
       .then(() => {
         setShowNewMeeting(false);
         setMeetingTitle('');
         setAttendees('');
-        setSpeaker('');
-        setLocation('');
-        setTags('');
-        setCategory('sermon');
       })
       .catch((error) => {
         Alert.alert('Recording Error', error.message);
@@ -293,62 +274,6 @@ export default function HomeScreen() {
                     value={meetingTitle}
                     onChangeText={setMeetingTitle}
                     placeholder="e.g., Weekly Team Standup"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Category</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categorySelector}>
-                    {['sermon', 'bible-study', 'prayer', 'worship', 'conference', 'teaching', 'testimony', 'other'].map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.categoryOption,
-                          category === cat && styles.selectedCategoryOption
-                        ]}
-                        onPress={() => setCategory(cat)}
-                      >
-                        <Text style={[
-                          styles.categoryName,
-                          category === cat && styles.selectedCategoryName
-                        ]}>
-                          {cat.charAt(0).toUpperCase() + cat.slice(1).replace('-', ' ')}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Speaker (optional)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={speaker}
-                    onChangeText={setSpeaker}
-                    placeholder="Pastor John Smith"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Location (optional)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={location}
-                    onChangeText={setLocation}
-                    placeholder="Main Sanctuary, Room 101"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Tags (optional)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={tags}
-                    onChangeText={setTags}
-                    placeholder="faith, hope, love (comma separated)"
                     placeholderTextColor="#9CA3AF"
                   />
                 </View>
