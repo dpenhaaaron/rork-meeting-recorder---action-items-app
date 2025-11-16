@@ -275,18 +275,40 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       }
       
       const result = await response.json();
+      console.log('Transcription API raw response:', JSON.stringify(result, null, 2));
       console.log('Transcription response received:', {
         hasText: !!result.text,
+        textType: typeof result.text,
         textLength: result.text?.length || 0,
-        language: result.language
+        language: result.language,
+        allFields: Object.keys(result)
       });
       
-      // Validate transcription text
-      if (!result.text || typeof result.text !== 'string' || result.text.trim().length === 0) {
+      // Validate transcription text - check for nested object structure
+      let transcriptionText = result.text;
+      
+      // Handle nested text object (e.g., {text: {text: "actual text"}})
+      if (transcriptionText && typeof transcriptionText === 'object' && 'text' in transcriptionText) {
+        console.log('Found nested text object, extracting...');
+        transcriptionText = transcriptionText.text;
+      }
+      
+      if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
+        console.error('Transcription validation failed:', {
+          hasText: !!result.text,
+          textType: typeof result.text,
+          textValue: result.text,
+          transcriptionText,
+          transcriptionTextType: typeof transcriptionText
+        });
         throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
       }
       
-      const validatedText = validateTranscript(result.text);
+      const validatedText = validateTranscript(transcriptionText);
+      console.log('Transcription validated successfully:', {
+        textLength: validatedText.length,
+        preview: validatedText.substring(0, 100)
+      });
       
       return {
         text: validatedText,
