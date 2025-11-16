@@ -719,13 +719,15 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       throw new Error(`Meeting with ID ${meetingId} not found`);
     }
     
-    console.log('Meeting found:', {
+    console.log('Meeting found:', JSON.stringify({
       id: meeting.id,
       title: meeting.title,
       audioUri: meeting.audioUri,
       duration: meeting.duration,
-      status: meeting.status
-    });
+      status: meeting.status,
+      hasTranscript: !!meeting.transcript,
+      transcriptLength: meeting.transcript?.fullText?.length || 0
+    }, null, 2));
     
     let hasAudio = false;
     let audioFileSize = 0;
@@ -766,13 +768,13 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     
     if (!hasAudio) {
       console.error(`Audio source missing and no artifacts available, cannot process: ${meetingId}`);
-      console.error('Audio validation failed:', {
+      console.error('Audio validation failed:', JSON.stringify({
         platform: Platform.OS,
         audioUri: meeting.audioUri,
         audioFileSize,
         hasAudio,
         duration: meeting.duration
-      });
+      }, null, 2));
       
       // More specific error message based on duration
       if (meeting.duration > 1200) { // 20 minutes
@@ -854,8 +856,22 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       
       const storedTranscript = meeting.transcript?.fullText || '';
       
+      console.log('Checking transcript availability:', {
+        hasTranscript: !!meeting.transcript,
+        hasFullText: !!meeting.transcript?.fullText,
+        transcriptLength: storedTranscript.length,
+        transcriptPreview: storedTranscript.substring(0, 50)
+      });
+      
       if (!storedTranscript || storedTranscript.trim().length === 0) {
-        throw new Error('No transcript available. Please ensure speech recognition was working during recording.');
+        const errorMsg = Platform.OS === 'web' 
+          ? 'No transcript available. Please ensure your browser supports speech recognition (Chrome/Edge recommended) and that you spoke clearly during recording.'
+          : 'No transcript available. On-device transcription is only available on web browsers. Please use Chrome or Edge for best results.';
+        throw new Error(errorMsg);
+      }
+      
+      if (storedTranscript.trim().length < 10) {
+        throw new Error('Transcript is too short. Please record for longer and speak more clearly.');
       }
       
       console.log('Processing with stored transcript:', {
@@ -911,10 +927,10 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       setProcessingProgress(null);
       
       if (error instanceof Error) {
-        console.error('Processing error details:', {
+        console.error('Processing error details:', JSON.stringify({
           message: error.message,
           stack: error.stack
-        });
+        }, null, 2));
         
         if (error.message.includes('corrupted or empty')) {
           throw new Error('Recording appears to be corrupted or contains no speech. Please try recording again with clear audio. Make sure to speak clearly into the microphone.');

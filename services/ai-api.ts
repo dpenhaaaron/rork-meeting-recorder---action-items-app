@@ -302,7 +302,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       });
       
       if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
-        console.error('Transcription validation failed:', {
+        const validationDetails = {
           hasText: !!result.text,
           textType: typeof result.text,
           textValue: result.text,
@@ -310,7 +310,8 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
           transcriptionTextType: typeof transcriptionText,
           isObject: typeof transcriptionText === 'object',
           objectKeys: typeof transcriptionText === 'object' ? Object.keys(transcriptionText) : null
-        });
+        };
+        console.error('Transcription validation failed:', JSON.stringify(validationDetails, null, 2));
         throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
       }
       
