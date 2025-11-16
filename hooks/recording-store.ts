@@ -860,14 +860,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         hasTranscript: !!meeting.transcript,
         hasFullText: !!meeting.transcript?.fullText,
         transcriptLength: storedTranscript.length,
-        transcriptPreview: storedTranscript.substring(0, 50)
+        transcriptPreview: storedTranscript.substring(0, 50),
+        platform: Platform.OS
       });
       
       if (!storedTranscript || storedTranscript.trim().length === 0) {
-        const errorMsg = Platform.OS === 'web' 
-          ? 'No transcript available. Please ensure your browser supports speech recognition (Chrome/Edge recommended) and that you spoke clearly during recording.'
-          : 'No transcript available. On-device transcription is only available on web browsers. Please use Chrome or Edge for best results.';
-        throw new Error(errorMsg);
+        if (Platform.OS === 'web') {
+          throw new Error('No transcript available. Please ensure your browser supports speech recognition (Chrome/Edge recommended) and that you spoke clearly during recording.');
+        } else {
+          throw new Error('On-device transcription is only available on web. Please use a web browser (Chrome/Edge recommended) to record and transcribe meetings.');
+        }
       }
       
       if (storedTranscript.trim().length < 10) {

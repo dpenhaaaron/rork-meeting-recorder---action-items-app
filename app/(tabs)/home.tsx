@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 
 import { Plus, Clock, Users, FileText, Languages, Zap, TrendingUp } from 'lucide-react-native';
@@ -70,9 +70,18 @@ export default function HomeScreen() {
       return;
     }
 
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Web Browser Required',
+        'On-device transcription is only available on web browsers. Please open this app in Chrome or Edge to record and transcribe meetings. You can scan the QR code to access the web version.',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+
     Alert.alert(
       'Recording Tip',
-      'For best results, keep each recording under 3 minutes. Longer recordings may take more time to process and could fail on slower connections.',
+      'For best results, keep each recording under 10 minutes. The app uses on-device speech recognition in your browser (no data sent to servers).',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -166,37 +175,26 @@ export default function HomeScreen() {
     if (!state.isRecording) return;
     
     try {
-      if (state.duration === 180) { // 3 minutes
+      if (state.duration === 5 * 60) { // 5 minutes
         try {
           Alert.alert(
-            'Processing Limit Reached',
-            'Your recording has reached 3 minutes. For optimal processing, consider stopping now. Longer recordings may fail to process.',
+            'Halfway Point',
+            'Your recording has reached 5 minutes. You have 5 minutes remaining.',
             [{ text: 'OK' }]
           );
         } catch (alertError) {
-          console.warn('3-minute alert error:', alertError);
+          console.warn('5-minute alert error:', alertError);
         }
       }
-      if (state.duration === 3 * 60 * 60) { // 3 hours
+      if (state.duration === 9 * 60) { // 9 minutes
         try {
           Alert.alert(
-            'Recording Limit Warning',
-            'Your recording will automatically stop in 1 hour (4-hour limit). Consider stopping and starting a new recording if needed.',
+            'One Minute Warning',
+            'Your recording will automatically stop in 1 minute (10-minute limit).',
             [{ text: 'OK' }]
           );
         } catch (alertError) {
-          console.warn('3-hour alert error:', alertError);
-        }
-      }
-      if (state.duration === 3.75 * 60 * 60) { // 3 hours 45 minutes
-        try {
-          Alert.alert(
-            'Fifteen Minute Warning',
-            'Your recording will stop in 15 minutes. Please prepare to wrap up.',
-            [{ text: 'OK' }]
-          );
-        } catch (alertError) {
-          console.warn('15-minute alert error:', alertError);
+          console.warn('9-minute alert error:', alertError);
         }
       }
     } catch (error) {
@@ -364,7 +362,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 
                 <Text style={styles.quickStartText}>
-                  AI-powered recording assistant for sermons, Bible studies, and spiritual gatherings with up to 4-hour recording capacity
+                  AI-powered recording assistant with on-device transcription. Maximum 10 minutes per recording.
                 </Text>
                 
                 {/* Feature Highlights */}
