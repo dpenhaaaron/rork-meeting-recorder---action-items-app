@@ -287,11 +287,19 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       // Validate transcription text - check for nested object structure
       let transcriptionText = result.text;
       
-      // Handle nested text object (e.g., {text: {text: "actual text"}})
-      if (transcriptionText && typeof transcriptionText === 'object' && 'text' in transcriptionText) {
-        console.log('Found nested text object, extracting...');
+      // Handle deeply nested text object (e.g., {text: {text: {text: "actual text"}}})
+      while (transcriptionText && typeof transcriptionText === 'object' && 'text' in transcriptionText) {
+        console.log('Found nested text object, extracting...', typeof transcriptionText.text);
         transcriptionText = transcriptionText.text;
       }
+      
+      // Additional validation and debug logging
+      console.log('After extraction:', {
+        transcriptionText,
+        type: typeof transcriptionText,
+        isString: typeof transcriptionText === 'string',
+        trimmedLength: typeof transcriptionText === 'string' ? transcriptionText.trim().length : 0
+      });
       
       if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
         console.error('Transcription validation failed:', {
@@ -299,7 +307,9 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
           textType: typeof result.text,
           textValue: result.text,
           transcriptionText,
-          transcriptionTextType: typeof transcriptionText
+          transcriptionTextType: typeof transcriptionText,
+          isObject: typeof transcriptionText === 'object',
+          objectKeys: typeof transcriptionText === 'object' ? Object.keys(transcriptionText) : null
         });
         throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
       }
