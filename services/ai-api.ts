@@ -150,7 +150,7 @@ const splitTranscriptIntoChunks = (transcript: string): string[] => {
 
 export const transcribeAudio = async (request: TranscribeRequest): Promise<TranscribeResponse> => {
   return retryWithBackoff(async () => {
-    console.log('Starting Gemini 2.5 Flash transcription request...');
+    console.log('Starting speech-to-text transcription request...');
     
     // Validate request object
     if (!request || typeof request !== 'object') {
@@ -206,38 +206,31 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
     }
     
     try {
-      // Convert audio file to base64
-      let base64Audio: string;
-      let mimeType: string;
+      console.log('Preparing audio for transcription...');
+      const formData = new FormData();
       
       if ('uri' in request.audio) {
-        // Mobile platform - read file and convert to base64
-        const FileSystem = await import('expo-file-system/legacy');
-        const audioUri = request.audio.uri;
+        // Mobile platform - append file with proper structure
+        const uri = request.audio.uri;
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
         
-        console.log('Reading audio file from URI:', audioUri);
-        const base64Data = await FileSystem.readAsStringAsync(audioUri, {
-          encoding: FileSystem.EncodingType.Base64,
+        const audioFile = {
+          uri,
+          name: request.audio.name,
+          type: request.audio.type
+        } as any;
+        
+        formData.append('audio', audioFile);
+        console.log('Mobile audio file appended to formData:', {
+          name: request.audio.name,
+          type: request.audio.type
         });
-        
-        if (!base64Data || base64Data.length === 0) {
-          throw new Error('Failed to read audio file: empty base64 data');
-        }
-        
-        base64Audio = base64Data;
-        mimeType = request.audio.type;
-        console.log('Mobile audio converted to base64, length:', base64Audio.length);
       } else {
         // Web platform - File object
         if (!(request.audio instanceof File)) {
           throw new Error('Web audio must be a File object');
         }
-        
-        console.log('Converting web audio to base64:', {
-          name: request.audio.name,
-          size: request.audio.size,
-          type: request.audio.type
-        });
         
         if (request.audio.size === 0) {
           throw new Error('Audio file is empty (0 bytes). The recording may have failed.');
@@ -247,54 +240,47 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
           console.warn('Audio file is very small:', request.audio.size, 'bytes - may not contain speech');
         }
         
-        // Convert File to base64
-        const arrayBuffer = await request.audio.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        base64Audio = btoa(binary);
-        mimeType = request.audio.type || 'audio/webm';
-        console.log('Web audio converted to base64, length:', base64Audio.length);
+        formData.append('audio', request.audio);
+        console.log('Web audio file appended to formData:', {
+          name: request.audio.name,
+          size: request.audio.size,
+          type: request.audio.type
+        });
       }
       
-      console.log('Sending transcription request to Gemini 2.5 Flash...');
+      if (request.language) {
+        formData.append('language', request.language);
+      }
       
-      // Use generateText with audio
-      const transcriptionText = await generateText({
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Please transcribe this audio. Return only the transcription text, no additional commentary or formatting.'
-              },
-              {
-                type: 'image',
-                image: `data:${mimeType};base64,${base64Audio}`
-              }
-            ]
-          }
-        ]
+      console.log('Sending transcription request to speech-to-text API...');
+      
+      const response = await fetch('https://toolkit.rork.com/stt/transcribe/', {
+        method: 'POST',
+        body: formData,
       });
       
-      console.log('Gemini transcription received:', {
-        length: transcriptionText.length,
-        preview: transcriptionText.substring(0, 100) + (transcriptionText.length > 100 ? '...' : '')
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Transcription API error (${response.status}): ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log('Transcription response received:', {
+        hasText: !!result.text,
+        textLength: result.text?.length || 0,
+        language: result.language
       });
       
       // Validate transcription text
-      if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
+      if (!result.text || typeof result.text !== 'string' || result.text.trim().length === 0) {
         throw new Error('Recording appears to be corrupted or empty. The transcription service returned an empty result. This usually happens when: 1) The audio file is corrupted or unreadable, 2) The recording contains no speech/audio, 3) The audio format is not supported. Please try recording again with clear speech.');
       }
       
-      const validatedText = validateTranscript(transcriptionText);
+      const validatedText = validateTranscript(result.text);
       
       return {
         text: validatedText,
-        language: request.language || 'en'
+        language: result.language || request.language || 'en'
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -306,7 +292,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
         }
       }
       
-      console.error('Gemini transcription request failed:', error);
+      console.error('Transcription request failed:', error);
       throw new Error('Transcription failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   });
