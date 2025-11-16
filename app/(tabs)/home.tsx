@@ -70,17 +70,29 @@ export default function HomeScreen() {
       return;
     }
 
-    const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
-    
-    startRecording(meetingTitle, attendeeList)
-      .then(() => {
-        setShowNewMeeting(false);
-        setMeetingTitle('');
-        setAttendees('');
-      })
-      .catch((error) => {
-        Alert.alert('Recording Error', error.message);
-      });
+    Alert.alert(
+      'Recording Tip',
+      'For best results, keep each recording under 3 minutes. Longer recordings may take more time to process and could fail on slower connections.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Start Recording', 
+          onPress: () => {
+            const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
+            
+            startRecording(meetingTitle, attendeeList)
+              .then(() => {
+                setShowNewMeeting(false);
+                setMeetingTitle('');
+                setAttendees('');
+              })
+              .catch((error) => {
+                Alert.alert('Recording Error', error.message);
+              });
+          }
+        }
+      ]
+    );
   };
 
   const handleStopRecording = async () => {
@@ -149,11 +161,22 @@ export default function HomeScreen() {
     }
   };
 
-  // Show warning when approaching 4-hour limit
+  // Show warnings during recording
   React.useEffect(() => {
     if (!state.isRecording) return;
     
     try {
+      if (state.duration === 180) { // 3 minutes
+        try {
+          Alert.alert(
+            'Processing Limit Reached',
+            'Your recording has reached 3 minutes. For optimal processing, consider stopping now. Longer recordings may fail to process.',
+            [{ text: 'OK' }]
+          );
+        } catch (alertError) {
+          console.warn('3-minute alert error:', alertError);
+        }
+      }
       if (state.duration === 3 * 60 * 60) { // 3 hours
         try {
           Alert.alert(

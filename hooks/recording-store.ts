@@ -283,7 +283,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         
         const mediaRecorder = new MediaRecorder(stream, {
           mimeType: mimeType || undefined,
-          audioBitsPerSecond: 128000
+          audioBitsPerSecond: 32000
         });
         mediaRecorderRef.current = mediaRecorder;
         audioChunksRef.current = [];
@@ -349,31 +349,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         });
         
         const recording = new Audio.Recording();
-        await recording.prepareToRecordAsync({
-          android: {
-            extension: '.m4a',
-            outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-            audioEncoder: Audio.AndroidAudioEncoder.AAC,
-            sampleRate: 44100,
-            numberOfChannels: 1,
-            bitRate: 128000,
-          },
-          ios: {
-            extension: '.wav',
-            outputFormat: Audio.IOSOutputFormat.LINEARPCM,
-            audioQuality: Audio.IOSAudioQuality.HIGH,
-            sampleRate: 44100,
-            numberOfChannels: 1,
-            bitRate: 128000,
-            linearPCMBitDepth: 16,
-            linearPCMIsBigEndian: false,
-            linearPCMIsFloat: false,
-          },
-          web: {
-            mimeType: 'audio/webm',
-            bitsPerSecond: 128000,
-          },
-        });
+        const recordingConfig = getOptimalRecordingConfig();
+        await recording.prepareToRecordAsync(recordingConfig);
         await recording.startAsync();
         recordingRef.current = recording;
       }

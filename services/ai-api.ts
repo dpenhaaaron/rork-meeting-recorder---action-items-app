@@ -148,6 +148,8 @@ const splitTranscriptIntoChunks = (transcript: string): string[] => {
   return chunks.filter(chunk => chunk.trim().length > 20);
 };
 
+const MAX_AUDIO_FILE_SIZE = 8 * 1024 * 1024;
+
 export const transcribeAudio = async (request: TranscribeRequest): Promise<TranscribeResponse> => {
   return retryWithBackoff(async () => {
     console.log('Starting speech-to-text transcription request...');
@@ -166,6 +168,14 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       hasUri: 'uri' in request.audio,
       type: typeof request.audio
     });
+    
+    if ('size' in request.audio && typeof request.audio.size === 'number') {
+      if (request.audio.size > MAX_AUDIO_FILE_SIZE) {
+        const sizeMB = (request.audio.size / (1024 * 1024)).toFixed(1);
+        throw new Error(`Audio file is too large (${sizeMB}MB). Maximum size is 8MB. For longer recordings, please use shorter recording sessions (under 3 minutes each).`);
+      }
+      console.log('Audio file size check passed:', (request.audio.size / (1024 * 1024)).toFixed(2), 'MB');
+    }
     
     // Enhanced validation for audio file
     if ('size' in request.audio) {

@@ -8,19 +8,19 @@ export const OPTIMAL_RECORDING_CONFIG = {
     audioEncoder: Audio.AndroidAudioEncoder.AAC,
     sampleRate: 16000,
     numberOfChannels: 1,
-    bitRate: 64000,
+    bitRate: 32000,
   },
   ios: {
     extension: '.m4a',
     outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-    audioQuality: Audio.IOSAudioQuality.HIGH,
+    audioQuality: Audio.IOSAudioQuality.MEDIUM,
     sampleRate: 16000,
     numberOfChannels: 1,
-    bitRate: 64000,
+    bitRate: 32000,
   },
   web: {
     mimeType: 'audio/webm;codecs=opus',
-    bitsPerSecond: 64000,
+    bitsPerSecond: 32000,
   },
 };
 
@@ -52,23 +52,29 @@ export function getWebMediaRecorderConfig(): MediaRecorderOptions {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        audioBitsPerSecond: 64000,
+        audioBitsPerSecond: 32000,
       };
     }
   }
 
   return {
-    audioBitsPerSecond: 64000,
+    audioBitsPerSecond: 32000,
   };
 }
 
-export function estimateAudioSize(durationSeconds: number, bitRate: number = 64000): number {
+export function estimateAudioSize(durationSeconds: number, bitRate: number = 32000): number {
   return Math.ceil((durationSeconds * bitRate) / 8);
 }
 
 export function shouldUseChunkedUpload(fileSizeBytes: number): boolean {
-  const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+  const CHUNK_THRESHOLD = 8 * 1024 * 1024;
   return fileSizeBytes > CHUNK_THRESHOLD;
+}
+
+export function shouldSplitForTranscription(fileSizeBytes: number, durationSeconds: number): boolean {
+  const MAX_TRANSCRIPTION_SIZE = 8 * 1024 * 1024;
+  const MAX_TRANSCRIPTION_DURATION = 180;
+  return fileSizeBytes > MAX_TRANSCRIPTION_SIZE || durationSeconds > MAX_TRANSCRIPTION_DURATION;
 }
 
 export function validateAudioFile(fileSize: number, duration: number): { valid: boolean; error?: string } {
