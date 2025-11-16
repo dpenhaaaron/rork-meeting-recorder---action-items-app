@@ -25,19 +25,10 @@ export const OPTIMAL_RECORDING_CONFIG = {
 };
 
 export function getOptimalRecordingConfig() {
-  if (Platform.OS === 'android') {
-    return {
-      android: OPTIMAL_RECORDING_CONFIG.android,
-    };
-  } else if (Platform.OS === 'ios') {
-    return {
-      ios: OPTIMAL_RECORDING_CONFIG.ios,
-    };
-  } else {
-    return {
-      web: OPTIMAL_RECORDING_CONFIG.web,
-    };
-  }
+  return {
+    android: OPTIMAL_RECORDING_CONFIG.android,
+    ios: OPTIMAL_RECORDING_CONFIG.ios,
+  };
 }
 
 export function getWebMediaRecorderConfig(): MediaRecorderOptions {
