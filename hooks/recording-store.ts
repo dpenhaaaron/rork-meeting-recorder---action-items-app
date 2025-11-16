@@ -5,14 +5,15 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Meeting, RecordingState, MeetingArtifacts, Note, Bookmark } from '@/types/meeting';
-import { processFullMeeting, processFullMeetingStreaming, ProcessingProgress } from '@/services/ai-api';
+import { processTranscriptOnly, ProcessingProgress } from '@/services/ai-api';
+import { createTranscriber, OnDeviceTranscriber, TranscriptionResult, getMaxRecordingDuration } from '@/services/on-device-transcription';
 import { chunkedUploadService, UploadProgress } from '@/services/chunked-upload';
 import { progressTracker, ProcessingStatus } from '@/services/progress-tracker';
 import { validateAudioFile, shouldUseChunkedUpload, getOptimalRecordingConfig } from '@/services/audio-processing';
 
 
 const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-const MAX_RECORDING_DURATION = 4 * 60 * 60; // 4 hours in seconds - Bible study length
+const MAX_RECORDING_DURATION = getMaxRecordingDuration(); // 10 minutes in seconds
 
 export const [RecordingProvider, useRecording] = createContextHook(() => {
   const [state, setState] = useState<RecordingState>({
@@ -34,6 +35,9 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const stopRecordingRef = useRef<(() => Promise<string | null>) | null>(null);
+  const transcriberRef = useRef<OnDeviceTranscriber | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const transcriptRef = useRef<string>('');
   
   const storeAudioBlob = useCallback(async (meetingId: string, blob: Blob) => {
     if (Platform.OS !== 'web') return;
@@ -157,7 +161,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       if (state.currentMeeting) {
         console.log('Finishing recording for meeting:', state.currentMeeting.id);
         
+        const finalTranscript = transcriptRef.current || '';
         const shouldProcess = state.duration > 0 && audioUri !== null;
+        
+        if (finalTranscript) {
+          console.log('Storing transcript with meeting:', {
+            meetingId: state.currentMeeting.id,
+            transcriptLength: finalTranscript.length,
+            transcriptPreview: finalTranscript.substring(0, 100)
+          });
+        }
         
         const updatedMeeting: Meeting = {
           ...state.currentMeeting,
@@ -165,6 +178,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           audioUri: audioUri ?? state.currentMeeting.audioUri,
           status: shouldProcess ? 'processing' : 'error',
           artifacts: state.currentMeeting.artifacts,
+          transcript: finalTranscript ? {
+            segments: [],
+            speakers: [],
+            confidence: 0.9,
+            fullText: finalTranscript,
+          } : state.currentMeeting.transcript,
         };
 
         try {
@@ -177,6 +196,9 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           console.error('Failed to save meeting to storage:', storageError);
         }
 
+        setLiveTranscript('');
+        transcriptRef.current = '';
+        
         setState(prev => ({
           ...prev,
           isRecording: false,
@@ -255,6 +277,26 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       };
 
       if (Platform.OS === 'web') {
+        const transcriber = createTranscriber();
+        if (transcriber.isSupported()) {
+          transcriberRef.current = transcriber;
+          (transcriber as any).setOnResult?.((result: TranscriptionResult) => {
+            transcriptRef.current = result.text;
+            if (result.isFinal) {
+              setLiveTranscript(result.text);
+            }
+          });
+          
+          try {
+            transcriber.start();
+            console.log('On-device transcription started');
+          } catch (error) {
+            console.error('Failed to start transcription:', error);
+          }
+        } else {
+          console.warn('Speech recognition not supported in this browser');
+        }
+        
         if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
           throw new Error('Microphone is not available in this environment');
         }
@@ -493,6 +535,17 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       let audioUri: string | null = null;
 
       if (Platform.OS === 'web') {
+        if (transcriberRef.current) {
+          try {
+            const finalTranscript = transcriberRef.current.stop();
+            transcriptRef.current = finalTranscript;
+            console.log('Final transcript from on-device:', finalTranscript.substring(0, 200));
+          } catch (error) {
+            console.error('Failed to stop transcriber:', error);
+          }
+          transcriberRef.current = null;
+        }
+        
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           return new Promise((resolve) => {
             const mediaRecorder = mediaRecorderRef.current!;
@@ -798,28 +851,26 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       }
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
-      const shouldUseStreaming = meeting.duration >= 180; // 3 minutes - use streaming for better reliability on longer recordings
       
-      console.log('Starting transcription with:', {
-        shouldUseStreaming,
+      const storedTranscript = meeting.transcript?.fullText || '';
+      
+      if (!storedTranscript || storedTranscript.trim().length === 0) {
+        throw new Error('No transcript available. Please ensure speech recognition was working during recording.');
+      }
+      
+      console.log('Processing with stored transcript:', {
+        transcriptLength: storedTranscript.length,
         duration: meeting.duration,
-        attendeeCount: attendeeNames.length
+        attendeeCount: attendeeNames.length,
+        transcriptPreview: storedTranscript.substring(0, 100)
       });
       
-      const result = shouldUseStreaming 
-        ? await processFullMeetingStreaming(
-            audioFile,
-            meeting.title,
-            attendeeNames,
-            meeting.duration,
-            (progress) => setProcessingProgress(progress)
-          )
-        : await processFullMeeting(
-            audioFile,
-            meeting.title,
-            attendeeNames,
-            (progress) => setProcessingProgress(progress)
-          );
+      const result = await processTranscriptOnly(
+        storedTranscript,
+        meeting.title,
+        attendeeNames,
+        (progress) => setProcessingProgress(progress)
+      );
 
       console.log('Processing completed successfully:', {
         transcriptLength: result.transcript.length,

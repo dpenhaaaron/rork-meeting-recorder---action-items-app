@@ -27,6 +27,7 @@ export interface Transcript {
   segments: TranscriptSegment[];
   speakers: Speaker[];
   confidence: number;
+  fullText?: string;
 }
 
 export interface TranscriptSegment {

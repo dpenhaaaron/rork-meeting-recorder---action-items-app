@@ -784,6 +784,45 @@ export const processFullMeetingStreaming = async (
 
 
 // Optimized function for standard meetings
+export const processTranscriptOnly = async (
+  transcript: string,
+  meetingTitle: string,
+  attendees: string[],
+  onProgress?: ProgressCallback
+): Promise<{ transcript: string; artifacts: MeetingArtifacts; emailDraft: EmailDraft }> => {
+  try {
+    onProgress?.({ stage: 'mapping', progress: 0, message: 'Starting AI analysis...' });
+
+    const validatedTranscript = validateTranscript(transcript);
+    console.log('Using provided transcript, length:', validatedTranscript.length, 'characters');
+
+    const artifacts = await processTranscript({
+      transcript: validatedTranscript,
+      attendees,
+      meetingTitle,
+      meetingDate: new Date().toISOString(),
+    }, onProgress);
+
+    const emailDraft = await generateEmailDraft({
+      meetingTitle,
+      meetingDate: new Date().toISOString(),
+      attendees,
+      artifacts,
+    }, onProgress);
+
+    onProgress?.({ stage: 'completed', progress: 100, message: 'Processing complete!' });
+
+    return {
+      transcript: validatedTranscript,
+      artifacts: { ...artifacts, email_draft: emailDraft },
+      emailDraft,
+    };
+  } catch (error) {
+    console.error('Transcript processing failed:', error);
+    throw new Error('Meeting processing failed. Please try again.');
+  }
+};
+
 export const processFullMeeting = async (
   audioFile: File | { uri: string; name: string; type: string },
   meetingTitle: string,
