@@ -212,7 +212,7 @@ export const transcribeAudio = async (request: TranscribeRequest): Promise<Trans
       
       if ('uri' in request.audio) {
         // Mobile platform - read file and convert to base64
-        const FileSystem = require('expo-file-system');
+        const FileSystem = await import('expo-file-system/legacy');
         const audioUri = request.audio.uri;
         
         console.log('Reading audio file from URI:', audioUri);
