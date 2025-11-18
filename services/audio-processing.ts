@@ -6,21 +6,21 @@ export const OPTIMAL_RECORDING_CONFIG = {
     extension: '.m4a',
     outputFormat: Audio.AndroidOutputFormat.MPEG_4,
     audioEncoder: Audio.AndroidAudioEncoder.AAC,
-    sampleRate: 16000,
+    sampleRate: 44100,
     numberOfChannels: 1,
-    bitRate: 32000,
+    bitRate: 128000,
   },
   ios: {
     extension: '.m4a',
     outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-    audioQuality: Audio.IOSAudioQuality.MEDIUM,
-    sampleRate: 16000,
+    audioQuality: Audio.IOSAudioQuality.HIGH,
+    sampleRate: 44100,
     numberOfChannels: 1,
-    bitRate: 32000,
+    bitRate: 128000,
   },
   web: {
     mimeType: 'audio/webm;codecs=opus',
-    bitsPerSecond: 32000,
+    bitsPerSecond: 128000,
   },
 };
 

@@ -607,7 +607,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                 if (!dirInfo.exists) {
                   await FileSystem.makeDirectoryAsync(RECORDINGS_DIR, { intermediates: true });
                 }
-                const ext = Platform.OS === 'ios' ? '.wav' : '.m4a';
+                const ext = '.m4a';
                 const dest = `${RECORDINGS_DIR}${meetingId}${ext}`;
                 await FileSystem.moveAsync({ from: tempUri, to: dest });
                 audioUri = dest;
@@ -796,18 +796,31 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         }
         
         const uriParts = meeting.audioUri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
+        const fileType = uriParts[uriParts.length - 1].toLowerCase();
+        
+        // Map file extensions to proper MIME types
+        let mimeType = 'audio/m4a';
+        if (fileType === 'm4a') {
+          mimeType = 'audio/m4a';
+        } else if (fileType === 'wav') {
+          mimeType = 'audio/wav';
+        } else if (fileType === 'mp3') {
+          mimeType = 'audio/mpeg';
+        } else if (fileType === 'aac') {
+          mimeType = 'audio/aac';
+        }
         
         console.log('Creating native audio file:', {
           uri: meeting.audioUri,
           fileSize,
-          fileType
+          fileType,
+          mimeType
         });
         
         audioFile = {
           uri: meeting.audioUri,
           name: `recording.${fileType}`,
-          type: `audio/${fileType}`,
+          type: mimeType,
         };
       }
 
