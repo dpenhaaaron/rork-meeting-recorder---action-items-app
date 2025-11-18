@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
 
@@ -16,7 +17,44 @@ export async function transcribeAudio(
   if (Platform.OS === 'web') {
     formData.append('audio', audioFile as File);
   } else {
-    formData.append('audio', audioFile as any);
+    const nativeFile = audioFile as { uri: string; name: string; type: string };
+    
+    console.log('Reading native audio file:', {
+      uri: nativeFile.uri,
+      name: nativeFile.name,
+      type: nativeFile.type
+    });
+    
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(nativeFile.uri);
+      if (!fileInfo.exists) {
+        console.error('Audio file does not exist at uri:', nativeFile.uri);
+        throw new Error('Audio file not found. Please try recording again.');
+      }
+      
+      const fileSize = 'size' in fileInfo ? (fileInfo.size ?? 0) : 0;
+      console.log('Native audio file info:', {
+        exists: fileInfo.exists,
+        size: fileSize,
+        uri: nativeFile.uri
+      });
+      
+      if (fileSize === 0) {
+        throw new Error('Audio file is empty. Please try recording again.');
+      }
+      
+      formData.append('audio', {
+        uri: nativeFile.uri,
+        name: nativeFile.name,
+        type: nativeFile.type,
+      } as any);
+    } catch (error: any) {
+      console.error('Error reading native audio file:', error);
+      if (error?.message?.includes('not found') || error?.message?.includes('empty')) {
+        throw error;
+      }
+      throw new Error('Failed to read audio file. Please try recording again.');
+    }
   }
   
   if (language) {
@@ -26,7 +64,7 @@ export async function transcribeAudio(
   console.log('Sending audio to transcription API:', {
     platform: Platform.OS,
     audioType: Platform.OS === 'web' ? (audioFile as File).type : (audioFile as any).type,
-    audioSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown',
+    audioSize: Platform.OS === 'web' ? (audioFile as File).size : 'file verified',
     language: language || 'auto-detect'
   });
 

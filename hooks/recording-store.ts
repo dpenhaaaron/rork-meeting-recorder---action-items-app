@@ -832,11 +832,22 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           mimeType
         });
         
+        if (!meeting.audioUri || meeting.audioUri.trim().length === 0) {
+          throw new Error('Audio URI is missing. The recording may not have been saved properly.');
+        }
+        
         audioFile = {
           uri: meeting.audioUri,
           name: `recording.${fileType}`,
           type: mimeType,
         };
+        
+        console.log('Audio file prepared for transcription:', {
+          uri: audioFile.uri,
+          name: audioFile.name,
+          type: audioFile.type,
+          size: fileSize
+        });
       }
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);

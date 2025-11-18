@@ -116,34 +116,27 @@ export default function HomeScreen() {
           try {
             console.log('Starting auto-processing for meeting:', meetingId);
             
-            // Reload meetings to ensure we have the latest state with audio URI
-            const meeting = meetings.find((m: Meeting) => m.id === meetingId);
-            
-            if (meeting && meeting.audioUri) {
-              console.log('Meeting ready for processing:', {
-                id: meeting.id,
-                audioUri: meeting.audioUri,
-                status: meeting.status
-              });
-              
-              await processMeeting(meetingId);
-              console.log('Auto-processing completed successfully');
-            } else {
-              console.error('Meeting not ready for processing:', {
-                found: !!meeting,
-                audioUri: meeting?.audioUri
-              });
-            }
+            await processMeeting(meetingId);
+            console.log('Auto-processing completed successfully');
           } catch (error) {
-            console.error('Auto-processing failed:', error);
+            console.error('Processing failed:', error);
+            
+            // Show user-friendly error message
+            const errorMessage = error instanceof Error ? error.message : 'Failed to process recording. Please try again.';
+            
             try {
-              // Update meeting status to error so user can retry
-              console.log('Setting meeting status to error for retry');
-            } catch (storageError) {
-              console.error('Failed to update meeting status:', storageError);
+              Alert.alert(
+                'Processing Failed',
+                errorMessage,
+                [
+                  { text: 'OK', style: 'default' }
+                ]
+              );
+            } catch (alertError) {
+              console.error('Failed to show error alert:', alertError);
             }
           }
-        }, 3000); // Increased delay to ensure recording is fully saved
+        }, 5000); // 5 second delay to ensure recording is fully saved
         
         // Cleanup timer on unmount
         return () => clearTimeout(processingTimer);
