@@ -854,26 +854,47 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       
       setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Transcribing audio...' });
       
-      console.log('Starting transcription with:', {
-        platform: Platform.OS,
-        audioFileType: Platform.OS === 'web' ? (audioFile as File).type : (audioFile as any).type,
-        audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown'
+      console.log('=== TRANSCRIPTION DEBUG INFO ===');
+      console.log('Platform:', Platform.OS);
+      console.log('Audio file details:', {
+        isFile: Platform.OS === 'web' ? audioFile instanceof File : 'native object',
+        type: Platform.OS === 'web' ? (audioFile as File).type : (audioFile as any).type,
+        size: Platform.OS === 'web' ? `${(audioFile as File).size} bytes` : 'check via FileSystem',
+        name: Platform.OS === 'web' ? (audioFile as File).name : (audioFile as any).name,
+        uri: Platform.OS !== 'web' ? (audioFile as any).uri : 'blob'
       });
+      console.log('Meeting details:', {
+        duration: `${meeting.duration} seconds`,
+        attendees: attendeeNames.length,
+        title: meeting.title
+      });
+      console.log('================================');
       
       let transcriptionResult;
       try {
         transcriptionResult = await transcribeAudio(audioFile);
+        console.log('Raw transcription result:', JSON.stringify(transcriptionResult, null, 2));
       } catch (transcriptionError: any) {
         console.error('Transcription failed:', transcriptionError);
+        console.error('Transcription error stack:', transcriptionError?.stack);
+        console.error('Audio file details at error:', {
+          platform: Platform.OS,
+          audioFileType: Platform.OS === 'web' ? (audioFile as File).type : (audioFile as any).type,
+          audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown',
+          audioUri: Platform.OS !== 'web' ? (audioFile as any).uri : 'blob',
+          meetingDuration: meeting.duration
+        });
         
         // Provide specific error message based on the error
         if (transcriptionError?.message?.includes('413') || transcriptionError?.message?.includes('Too Large')) {
           throw new Error('Audio file is too large for transcription. Please try recording a shorter meeting (under 10 minutes).');
         } else if (transcriptionError?.message?.includes('network') || transcriptionError?.message?.includes('fetch')) {
           throw new Error('Network error during transcription. Please check your internet connection and try again.');
+        } else if (transcriptionError?.message?.includes('not found') || transcriptionError?.message?.includes('does not exist')) {
+          throw new Error('Audio file could not be found. The recording may not have been saved properly. Please try recording again.');
         }
         
-        throw new Error('Failed to transcribe audio. Please ensure the recording contains clear speech and try again.');
+        throw new Error('Failed to transcribe audio: ' + (transcriptionError?.message || 'Unknown error. Please try again.'));
       }
       
       const storedTranscript = transcriptionResult?.text?.trim() || '';

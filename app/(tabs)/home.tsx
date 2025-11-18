@@ -70,29 +70,25 @@ export default function HomeScreen() {
       return;
     }
 
-    Alert.alert(
-      'Recording Tip',
-      'For best results, keep each recording under 10 minutes. The audio will be transcribed using AI after recording.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Start Recording', 
-          onPress: () => {
-            const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
-            
-            startRecording(meetingTitle, attendeeList)
-              .then(() => {
-                setShowNewMeeting(false);
-                setMeetingTitle('');
-                setAttendees('');
-              })
-              .catch((error) => {
-                Alert.alert('Recording Error', error.message);
-              });
-          }
-        }
-      ]
-    );
+    const attendeeList = attendees.split(',').map(name => name.trim()).filter(Boolean);
+    
+    console.log('Starting recording with:', {
+      title: meetingTitle,
+      attendees: attendeeList,
+      platform: Platform.OS
+    });
+    
+    startRecording(meetingTitle, attendeeList)
+      .then(() => {
+        console.log('Recording started successfully');
+        setShowNewMeeting(false);
+        setMeetingTitle('');
+        setAttendees('');
+      })
+      .catch((error) => {
+        console.error('Failed to start recording:', error);
+        Alert.alert('Recording Error', error.message);
+      });
   };
 
   const handleStopRecording = async () => {
