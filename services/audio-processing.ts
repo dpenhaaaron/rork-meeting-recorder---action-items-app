@@ -28,6 +28,7 @@ export function getOptimalRecordingConfig() {
   return {
     android: OPTIMAL_RECORDING_CONFIG.android,
     ios: OPTIMAL_RECORDING_CONFIG.ios,
+    web: OPTIMAL_RECORDING_CONFIG.web,
   };
 }
 

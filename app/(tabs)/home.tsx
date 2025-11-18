@@ -70,18 +70,9 @@ export default function HomeScreen() {
       return;
     }
 
-    if (Platform.OS !== 'web') {
-      Alert.alert(
-        'Web Browser Required',
-        'On-device transcription is only available on web browsers. Please open this app in Chrome or Edge to record and transcribe meetings. You can scan the QR code to access the web version.',
-        [{ text: 'OK', style: 'default' }]
-      );
-      return;
-    }
-
     Alert.alert(
       'Recording Tip',
-      'For best results, keep each recording under 10 minutes. The app uses on-device speech recognition in your browser (no data sent to servers).',
+      'For best results, keep each recording under 10 minutes. The audio will be transcribed using AI after recording.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -362,7 +353,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 
                 <Text style={styles.quickStartText}>
-                  AI-powered recording assistant with on-device transcription. Maximum 10 minutes per recording.
+                  AI-powered recording assistant with automatic transcription. Maximum 10 minutes per recording.
                 </Text>
                 
                 {/* Feature Highlights */}

@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Meeting, RecordingState, MeetingArtifacts, Note, Bookmark } from '@/types/meeting';
 import { processTranscriptOnly, ProcessingProgress } from '@/services/ai-api';
-import { createTranscriber, OnDeviceTranscriber, TranscriptionResult, getMaxRecordingDuration } from '@/services/on-device-transcription';
+import { getMaxRecordingDuration } from '@/services/on-device-transcription';
+import { transcribeAudio } from '@/services/transcription-api';
 import { chunkedUploadService, UploadProgress } from '@/services/chunked-upload';
 import { progressTracker, ProcessingStatus } from '@/services/progress-tracker';
 import { validateAudioFile, shouldUseChunkedUpload, getOptimalRecordingConfig } from '@/services/audio-processing';
@@ -35,9 +36,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const stopRecordingRef = useRef<(() => Promise<string | null>) | null>(null);
-  const transcriberRef = useRef<OnDeviceTranscriber | null>(null);
-  const [liveTranscript, setLiveTranscript] = useState<string>('');
-  const transcriptRef = useRef<string>('');
+
   
   const storeAudioBlob = useCallback(async (meetingId: string, blob: Blob) => {
     if (Platform.OS !== 'web') return;
@@ -161,16 +160,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       if (state.currentMeeting) {
         console.log('Finishing recording for meeting:', state.currentMeeting.id);
         
-        const finalTranscript = transcriptRef.current || '';
         const shouldProcess = state.duration > 0 && audioUri !== null;
-        
-        if (finalTranscript) {
-          console.log('Storing transcript with meeting:', {
-            meetingId: state.currentMeeting.id,
-            transcriptLength: finalTranscript.length,
-            transcriptPreview: finalTranscript.substring(0, 100)
-          });
-        }
         
         const updatedMeeting: Meeting = {
           ...state.currentMeeting,
@@ -178,12 +168,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           audioUri: audioUri ?? state.currentMeeting.audioUri,
           status: shouldProcess ? 'processing' : 'error',
           artifacts: state.currentMeeting.artifacts,
-          transcript: finalTranscript ? {
-            segments: [],
-            speakers: [],
-            confidence: 0.9,
-            fullText: finalTranscript,
-          } : state.currentMeeting.transcript,
+          transcript: state.currentMeeting.transcript,
         };
 
         try {
@@ -196,8 +181,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           console.error('Failed to save meeting to storage:', storageError);
         }
 
-        setLiveTranscript('');
-        transcriptRef.current = '';
+
         
         setState(prev => ({
           ...prev,
@@ -277,26 +261,6 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       };
 
       if (Platform.OS === 'web') {
-        const transcriber = createTranscriber();
-        if (transcriber.isSupported()) {
-          transcriberRef.current = transcriber;
-          (transcriber as any).setOnResult?.((result: TranscriptionResult) => {
-            transcriptRef.current = result.text;
-            if (result.isFinal) {
-              setLiveTranscript(result.text);
-            }
-          });
-          
-          try {
-            transcriber.start();
-            console.log('On-device transcription started');
-          } catch (error) {
-            console.error('Failed to start transcription:', error);
-          }
-        } else {
-          console.warn('Speech recognition not supported in this browser');
-        }
-        
         if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
           throw new Error('Microphone is not available in this environment');
         }
@@ -535,17 +499,6 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       let audioUri: string | null = null;
 
       if (Platform.OS === 'web') {
-        if (transcriberRef.current) {
-          try {
-            const finalTranscript = transcriberRef.current.stop();
-            transcriptRef.current = finalTranscript;
-            console.log('Final transcript from on-device:', finalTranscript.substring(0, 200));
-          } catch (error) {
-            console.error('Failed to stop transcriber:', error);
-          }
-          transcriberRef.current = null;
-        }
-        
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           return new Promise((resolve) => {
             const mediaRecorder = mediaRecorderRef.current!;
@@ -854,29 +807,41 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
 
       const attendeeNames = meeting.attendees.map((a: any) => a.name);
       
-      const storedTranscript = meeting.transcript?.fullText || '';
+      setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Transcribing audio...' });
       
-      console.log('Checking transcript availability:', {
-        hasTranscript: !!meeting.transcript,
-        hasFullText: !!meeting.transcript?.fullText,
+      console.log('Starting transcription with:', {
+        platform: Platform.OS,
+        audioFileType: Platform.OS === 'web' ? (audioFile as File).type : (audioFile as any).type,
+        audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown'
+      });
+      
+      let transcriptionResult;
+      try {
+        transcriptionResult = await transcribeAudio(audioFile);
+      } catch (transcriptionError) {
+        console.error('Transcription failed:', transcriptionError);
+        throw new Error('Failed to transcribe audio. Please ensure the recording contains clear speech and try again.');
+      }
+      
+      const storedTranscript = transcriptionResult.text;
+      
+      console.log('Transcription completed:', {
         transcriptLength: storedTranscript.length,
-        transcriptPreview: storedTranscript.substring(0, 50),
-        platform: Platform.OS
+        language: transcriptionResult.language,
+        transcriptPreview: storedTranscript.substring(0, 100)
       });
       
       if (!storedTranscript || storedTranscript.trim().length === 0) {
-        if (Platform.OS === 'web') {
-          throw new Error('No transcript available. Please ensure your browser supports speech recognition (Chrome/Edge recommended) and that you spoke clearly during recording.');
-        } else {
-          throw new Error('On-device transcription is only available on web. Please use a web browser (Chrome/Edge recommended) to record and transcribe meetings.');
-        }
+        throw new Error('Recording appears to be empty or contains no speech. Please try recording again with clear audio.');
       }
       
       if (storedTranscript.trim().length < 10) {
         throw new Error('Transcript is too short. Please record for longer and speak more clearly.');
       }
       
-      console.log('Processing with stored transcript:', {
+      setProcessingProgress({ stage: 'refining', progress: 50, message: 'Analyzing transcript...' });
+      
+      console.log('Processing with transcribed text:', {
         transcriptLength: storedTranscript.length,
         duration: meeting.duration,
         attendeeCount: attendeeNames.length,
@@ -907,6 +872,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                 segments: [],
                 speakers: [],
                 confidence: 0.9,
+                fullText: storedTranscript,
               }
             }
           : m
