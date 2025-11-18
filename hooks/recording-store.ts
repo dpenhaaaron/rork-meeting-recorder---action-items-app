@@ -289,7 +289,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         
         const mediaRecorder = new MediaRecorder(stream, {
           mimeType: mimeType || undefined,
-          audioBitsPerSecond: 32000
+          audioBitsPerSecond: 128000
         });
         mediaRecorderRef.current = mediaRecorder;
         audioChunksRef.current = [];
@@ -333,10 +333,12 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         };
 
         try {
-          // Start with smaller timeslice for better reliability on long recordings
-          // Use 1 second chunks to prevent data loss on long recordings
-          mediaRecorder.start(1000); // 1 second chunks for better reliability
-          console.log('MediaRecorder started with mimeType:', mimeType);
+          mediaRecorder.start(1000);
+          console.log('MediaRecorder started with config:', {
+            mimeType: mimeType,
+            audioBitsPerSecond: 128000,
+            streamSettings: stream.getAudioTracks()[0]?.getSettings()
+          });
         } catch (e) {
           console.error('Failed to start MediaRecorder:', e);
           throw new Error('Failed to start recording. Please ensure your browser allows microphone access.');
@@ -776,8 +778,21 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           blobSize: blob.size,
           blobType: blob.type,
           mimeType: mimeType,
-          extension: extension
+          extension: extension,
+          duration: meeting.duration
         });
+        
+        // Check file size vs duration ratio to detect corrupted audio
+        const expectedMinSize = meeting.duration * 1000; // ~1KB per second at minimum
+        if (blob.size < expectedMinSize) {
+          console.error('Audio file is suspiciously small:', {
+            actualSize: blob.size,
+            duration: meeting.duration,
+            expectedMinSize,
+            ratio: blob.size / meeting.duration
+          });
+          throw new Error(`Recording may be corrupted. File size (${blob.size} bytes) is too small for ${meeting.duration} seconds of audio. Please try recording again and ensure you speak clearly into the microphone.`);
+        }
         
         if (blob.size < 1000) {
           console.warn('Audio blob is very small:', blob.size, 'bytes - may be corrupted');
@@ -856,6 +871,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         transcriptLength: storedTranscript.length,
         language: transcriptionResult?.language,
         transcriptPreview: storedTranscript.substring(0, 100),
+        fullResult: JSON.stringify(transcriptionResult),
         audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown',
         duration: meeting.duration
       });
@@ -864,8 +880,25 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         console.error('Empty transcription received:', {
           audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : audioFileSize,
           duration: meeting.duration,
-          audioUri: meeting.audioUri
+          audioUri: meeting.audioUri,
+          audioFileInfo: Platform.OS === 'web' ? {
+            name: (audioFile as File).name,
+            type: (audioFile as File).type,
+            size: (audioFile as File).size
+          } : {
+            uri: (audioFile as any).uri,
+            name: (audioFile as any).name,
+            type: (audioFile as any).type
+          },
+          fullTranscriptionResult: JSON.stringify(transcriptionResult)
         });
+        
+        // Check if audio file has content
+        const actualSize = Platform.OS === 'web' ? (audioFile as File).size : audioFileSize;
+        if (actualSize < 1000) {
+          throw new Error('Recording file is too small or empty. The audio may not have been captured correctly. Please check your microphone permissions and try again.');
+        }
+        
         throw new Error('No speech detected in the recording. Please ensure:\n• You are speaking clearly into the microphone\n• The microphone is not muted\n• There is no background noise overwhelming the speech\n• You record for at least 5 seconds');
       }
       
