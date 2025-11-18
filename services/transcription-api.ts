@@ -43,20 +43,48 @@ export async function transcribeAudio(
         statusText: response.statusText,
         error: errorText
       });
+      
+      if (response.status === 413) {
+        throw new Error('Audio file is too large for transcription. Maximum size is 25MB.');
+      } else if (response.status === 400) {
+        throw new Error('Invalid audio format. Please ensure you are recording with a supported format.');
+      } else if (response.status >= 500) {
+        throw new Error('Transcription service is temporarily unavailable. Please try again later.');
+      }
+      
       throw new Error(`Transcription failed: ${response.statusText}`);
     }
 
     const result: TranscriptionResponse = await response.json();
     
     console.log('Transcription successful:', {
-      textLength: result.text.length,
-      language: result.language,
-      preview: result.text.substring(0, 100)
+      textLength: result?.text?.length || 0,
+      language: result?.language || 'unknown',
+      preview: result?.text?.substring(0, 100) || ''
     });
+    
+    // Validate response
+    if (!result || typeof result.text !== 'string') {
+      console.error('Invalid transcription response:', result);
+      throw new Error('Invalid transcription response from server');
+    }
 
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Transcription request failed:', error);
+    
+    // If it's already a custom error, rethrow it
+    if (error?.message?.includes('too large') || 
+        error?.message?.includes('Invalid audio') || 
+        error?.message?.includes('temporarily unavailable')) {
+      throw error;
+    }
+    
+    // Network errors
+    if (error?.message?.includes('Failed to fetch') || error?.name === 'NetworkError') {
+      throw new Error('Network error. Please check your internet connection and try again.');
+    }
+    
     throw error;
   }
 }

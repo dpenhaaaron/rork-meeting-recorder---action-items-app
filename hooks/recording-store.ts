@@ -356,8 +356,14 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         
         const recording = new Audio.Recording();
         const recordingConfig = getOptimalRecordingConfig();
+        console.log('Preparing recording with config:', JSON.stringify(recordingConfig, null, 2));
+        
         await recording.prepareToRecordAsync(recordingConfig);
+        console.log('Recording prepared successfully');
+        
         await recording.startAsync();
+        console.log('Recording started successfully');
+        
         recordingRef.current = recording;
       }
 
@@ -818,25 +824,41 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       let transcriptionResult;
       try {
         transcriptionResult = await transcribeAudio(audioFile);
-      } catch (transcriptionError) {
+      } catch (transcriptionError: any) {
         console.error('Transcription failed:', transcriptionError);
+        
+        // Provide specific error message based on the error
+        if (transcriptionError?.message?.includes('413') || transcriptionError?.message?.includes('Too Large')) {
+          throw new Error('Audio file is too large for transcription. Please try recording a shorter meeting (under 10 minutes).');
+        } else if (transcriptionError?.message?.includes('network') || transcriptionError?.message?.includes('fetch')) {
+          throw new Error('Network error during transcription. Please check your internet connection and try again.');
+        }
+        
         throw new Error('Failed to transcribe audio. Please ensure the recording contains clear speech and try again.');
       }
       
-      const storedTranscript = transcriptionResult.text;
+      const storedTranscript = transcriptionResult?.text?.trim() || '';
       
       console.log('Transcription completed:', {
         transcriptLength: storedTranscript.length,
-        language: transcriptionResult.language,
-        transcriptPreview: storedTranscript.substring(0, 100)
+        language: transcriptionResult?.language,
+        transcriptPreview: storedTranscript.substring(0, 100),
+        audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : 'unknown',
+        duration: meeting.duration
       });
       
-      if (!storedTranscript || storedTranscript.trim().length === 0) {
-        throw new Error('Recording appears to be empty or contains no speech. Please try recording again with clear audio.');
+      if (!storedTranscript || storedTranscript.length === 0) {
+        console.error('Empty transcription received:', {
+          audioFileSize: Platform.OS === 'web' ? (audioFile as File).size : audioFileSize,
+          duration: meeting.duration,
+          audioUri: meeting.audioUri
+        });
+        throw new Error('No speech detected in the recording. Please ensure:\n• You are speaking clearly into the microphone\n• The microphone is not muted\n• There is no background noise overwhelming the speech\n• You record for at least 5 seconds');
       }
       
-      if (storedTranscript.trim().length < 10) {
-        throw new Error('Transcript is too short. Please record for longer and speak more clearly.');
+      if (storedTranscript.length < 10) {
+        console.warn('Very short transcription:', storedTranscript);
+        throw new Error(`Only detected: "${storedTranscript}". Please:\n• Speak more clearly and loudly\n• Hold the microphone closer\n• Record in a quieter environment\n• Try recording for longer`);
       }
       
       setProcessingProgress({ stage: 'refining', progress: 50, message: 'Analyzing transcript...' });
