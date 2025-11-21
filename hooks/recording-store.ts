@@ -59,10 +59,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const getAudioBlob = useCallback(async (meetingId: string): Promise<Blob | null> => {
     if (Platform.OS !== 'web') return null;
     
+    console.log('[IndexedDB] Attempting to retrieve audio blob for meeting:', meetingId);
+    
     return new Promise<Blob | null>((resolve, reject) => {
       const request = indexedDB.open('MeetingRecorderDB', 1);
       
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('[IndexedDB] Failed to open database:', request.error);
+        reject(request.error);
+      };
+      
       request.onsuccess = () => {
         const db = request.result;
         const transaction = db.transaction(['audioFiles'], 'readonly');
@@ -71,9 +77,31 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         const getRequest = store.get(meetingId);
         getRequest.onsuccess = () => {
           const result = getRequest.result;
-          resolve(result ? result.blob : null);
+          if (result && result.blob) {
+            console.log('[IndexedDB] Audio blob found:', {
+              meetingId,
+              blobSize: result.blob.size,
+              blobType: result.blob.type,
+              timestamp: result.timestamp
+            });
+            resolve(result.blob);
+          } else {
+            console.warn('[IndexedDB] No audio blob found for meeting:', meetingId);
+            resolve(null);
+          }
         };
-        getRequest.onerror = () => reject(getRequest.error);
+        getRequest.onerror = () => {
+          console.error('[IndexedDB] Failed to get audio blob:', getRequest.error);
+          reject(getRequest.error);
+        };
+      };
+      
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('audioFiles')) {
+          console.log('[IndexedDB] Creating audioFiles object store');
+          db.createObjectStore('audioFiles', { keyPath: 'id' });
+        }
       };
     });
   }, []);
@@ -163,16 +191,19 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       mediaRecorder.ondataavailable = (event) => {
         console.log('[Web Recording] Data chunk available:', {
           chunkSize: event.data.size,
-          totalChunks: audioChunksRef.current.length + 1
+          totalChunks: audioChunksRef.current.length + 1,
+          timestamp: new Date().toISOString()
         });
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         } else {
-          console.warn('[Web Recording] Received empty data chunk');
+          console.warn('[Web Recording] WARNING: Received empty data chunk');
         }
       };
 
-      mediaRecorder.start(1000);
+      // Start recording with smaller chunks for better reliability
+      mediaRecorder.start(100);
+      console.log('[Web Recording] MediaRecorder started with 100ms chunks');
     } else {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
@@ -413,42 +444,148 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         throw new Error('Meeting not found');
       }
 
-      setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Transcribing audio...' });
+      console.log('[Processing] Starting processing for meeting:', meetingId);
+      console.log('[Processing] Meeting details:', {
+        id: meeting.id,
+        title: meeting.title,
+        status: meeting.status,
+        audioUri: meeting.audioUri,
+        duration: meeting.duration
+      });
+
+      setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Preparing audio for transcription...' });
     
     let audioFile: File | { uri: string; name: string; type: string };
     
     if (Platform.OS === 'web') {
+      console.log('[Processing] Retrieving audio blob from IndexedDB...');
       const blob = await getAudioBlob(meetingId);
+      
       if (!blob) {
-        throw new Error('Audio not found');
+        console.error('[Processing] ERROR: Audio blob not found in IndexedDB for meeting:', meetingId);
+        // Try to check if it's an audio URI issue
+        if (meeting.audioUri && meeting.audioUri.startsWith('indexeddb://')) {
+          console.error('[Processing] IndexedDB URI exists but blob is missing:', meeting.audioUri);
+        }
+        throw new Error('Audio recording not found. The recording may have been deleted or not saved properly.');
       }
-      audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+      
+      console.log('[Processing] Audio blob retrieved:', {
+        size: blob.size,
+        type: blob.type,
+        sizeInMB: (blob.size / (1024 * 1024)).toFixed(2) + ' MB'
+      });
+      
+      // Validate blob before creating File
+      if (blob.size === 0) {
+        console.error('[Processing] ERROR: Retrieved blob is empty (0 bytes)');
+        throw new Error('Recording file appears to be corrupted or empty. Please record again.');
+      }
+      
+      audioFile = new File([blob], 'recording.webm', { type: blob.type || 'audio/webm' });
+      console.log('[Processing] Created File object:', {
+        name: audioFile.name,
+        size: audioFile.size,
+        type: audioFile.type
+      });
     } else {
+      console.log('[Processing] Checking native audio file...');
+      
+      if (!meeting.audioUri) {
+        console.error('[Processing] ERROR: No audio URI in meeting object');
+        throw new Error('Audio file path is missing. Please record again.');
+      }
+      
+      // Check if file exists
+      const fileInfo = await FileSystem.getInfoAsync(meeting.audioUri);
+      console.log('[Processing] Native file info:', {
+        exists: fileInfo.exists,
+        uri: meeting.audioUri,
+        size: fileInfo.exists ? fileInfo.size : 'N/A',
+        sizeInMB: fileInfo.exists && fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A'
+      });
+      
+      if (!fileInfo.exists) {
+        console.error('[Processing] ERROR: Audio file does not exist at path:', meeting.audioUri);
+        throw new Error('Audio recording file not found. It may have been deleted.');
+      }
+      
+      if (fileInfo.size === 0) {
+        console.error('[Processing] ERROR: Audio file is empty (0 bytes)');
+        throw new Error('Recording file is empty. Please record again with audio.');
+      }
+      
       audioFile = {
         uri: meeting.audioUri,
         name: 'recording.m4a',
         type: 'audio/m4a',
       };
+      console.log('[Processing] Native audio file prepared:', audioFile);
     }
+
+    setProcessingProgress({ stage: 'transcribing', progress: 20, message: 'Sending audio for transcription...' });
 
     let transcriptionResult;    
     let transcript;
     
     try {
+      console.log('[Processing] Starting transcription request...');
       transcriptionResult = await transcribeAudio(audioFile, meeting.language);
-      transcript = transcriptionResult.text;
       
-      console.log('Transcription successful:', {
-        textLength: transcript.length,
-        preview: transcript.substring(0, 100)
+      console.log('[Processing] Raw transcription result:', {
+        hasResult: !!transcriptionResult,
+        resultType: typeof transcriptionResult,
+        hasText: !!transcriptionResult?.text,
+        textType: typeof transcriptionResult?.text
       });
       
-      // Additional validation
-      if (!transcript || typeof transcript !== 'string' || transcript.trim().length === 0) {
-        throw new Error('Transcription returned empty text');
+      // Handle different response structures
+      if (transcriptionResult && typeof transcriptionResult === 'object') {
+        // Extract text from nested structures
+        let extractedText = transcriptionResult.text;
+        
+        // Handle deeply nested text objects
+        while (extractedText && typeof extractedText === 'object' && 'text' in extractedText) {
+          console.log('[Processing] Unwrapping nested text object...');
+          extractedText = (extractedText as any).text;
+        }
+        
+        transcript = extractedText;
+      } else {
+        transcript = transcriptionResult;
+      }
+      
+      console.log('[Processing] Transcription successful:', {
+        textLength: transcript ? transcript.length : 0,
+        preview: transcript ? transcript.substring(0, 100) : 'N/A',
+        textType: typeof transcript
+      });
+      
+      // Enhanced validation
+      if (!transcript) {
+        console.error('[Processing] ERROR: Transcript is null/undefined');
+        throw new Error('Transcription service returned no text. Please try recording again.');
+      }
+      
+      if (typeof transcript !== 'string') {
+        console.error('[Processing] ERROR: Transcript is not a string:', typeof transcript);
+        throw new Error(`Invalid transcript type: expected string but got ${typeof transcript}`);
+      }
+      
+      if (transcript.trim().length === 0) {
+        console.error('[Processing] ERROR: Transcript is empty after trimming');
+        throw new Error('No speech detected in the recording. Please ensure:\n• You are speaking clearly into the microphone\n• The microphone is not muted\n• There is no background noise overwhelming the speech\n• You record for at least 5 seconds');
+      }
+      
+      if (transcript.trim().length < 10) {
+        console.error('[Processing] ERROR: Transcript too short:', transcript.trim().length, 'characters');
+        throw new Error('Recording appears to be empty or contains no speech. Please try recording again with clear audio.');
       }
     } catch (transcriptionError) {
-      console.error('Transcription error:', transcriptionError);
+      console.error('[Processing] Transcription error details:', {
+        message: transcriptionError instanceof Error ? transcriptionError.message : 'Unknown error',
+        stack: transcriptionError instanceof Error ? transcriptionError.stack : undefined
+      });
       throw new Error(
         transcriptionError instanceof Error 
           ? transcriptionError.message 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -14,8 +14,11 @@ import {
   AlertTriangle,
   LogOut,
   User,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Activity
 } from 'lucide-react-native';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 
 import { useRecording } from '@/hooks/recording-store';
 import { useAuth } from '@/hooks/auth-store';
@@ -28,6 +31,7 @@ export default function SettingsScreen() {
   const [autoDelete, setAutoDelete] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [highQualityAudio, setHighQualityAudio] = useState(true);
+  const [testResult, setTestResult] = useState<string>('');
 
   const handleClearAllData = () => {
     Alert.alert(
@@ -196,6 +200,141 @@ export default function SettingsScreen() {
         </SettingSection>
 
         <SettingSection title="Recording">
+          <SettingRow
+            icon={<Activity size={20} color="#FF8C00" />}
+            title="Audio Diagnostics"
+            subtitle={testResult || "Test microphone and audio capture"}
+            onPress={async () => {
+              setTestResult('Testing...');
+              
+              try {
+                if (Platform.OS === 'web') {
+                  // Test web audio capture
+                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                  const mediaRecorder = new MediaRecorder(stream);
+                  const chunks: Blob[] = [];
+                  
+                  mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                  };
+                  
+                  mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // Test transcription
+                    const formData = new FormData();
+                    formData.append('audio', new File([blob], 'test.webm', { type: 'audio/webm' }));
+                    
+                    try {
+                      const response = await fetch('https://toolkit.rork.com/stt/transcribe/', {
+                        method: 'POST',
+                        body: formData,
+                      });
+                      
+                      if (response.ok) {
+                        const result = await response.json();
+                        setTestResult(`✓ Audio works! ${blob.size} bytes, transcription: ${result.text?.substring(0, 50) || 'empty'}`);
+                      } else {
+                        setTestResult(`✗ Transcription failed: ${response.status}`);
+                      }
+                    } catch (err) {
+                      setTestResult(`✗ Network error: ${err}`);
+                    }
+                  };
+                  
+                  mediaRecorder.start();
+                  setTimeout(() => mediaRecorder.stop(), 3000);
+                  
+                } else {
+                  // Test native audio capture
+                  const { status } = await Audio.requestPermissionsAsync();
+                  if (status !== 'granted') {
+                    setTestResult('✗ Microphone permission denied');
+                    return;
+                  }
+                  
+                  await Audio.setAudioModeAsync({ 
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                  });
+                  
+                  const recording = new Audio.Recording();
+                  await recording.prepareToRecordAsync({
+                    android: {
+                      extension: '.m4a',
+                      outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+                      audioEncoder: Audio.AndroidAudioEncoder.AAC,
+                      sampleRate: 44100,
+                      numberOfChannels: 2,
+                      bitRate: 128000,
+                    },
+                    ios: {
+                      extension: '.m4a',
+                      outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+                      audioQuality: Audio.IOSAudioQuality.HIGH,
+                      sampleRate: 44100,
+                      numberOfChannels: 2,
+                      bitRate: 128000,
+                    },
+                    web: {
+                      mimeType: 'audio/webm',
+                      bitsPerSecond: 128000,
+                    },
+                  });
+                  
+                  await recording.startAsync();
+                  
+                  setTimeout(async () => {
+                    await recording.stopAndUnloadAsync();
+                    const uri = recording.getURI();
+                    
+                    if (uri) {
+                      const info = await FileSystem.getInfoAsync(uri);
+                      
+                      if (info.exists && info.size && info.size > 0) {
+                        // Test transcription
+                        const formData = new FormData();
+                        formData.append('audio', {
+                          uri,
+                          name: 'test.m4a',
+                          type: 'audio/m4a',
+                        } as any);
+                        
+                        try {
+                          const response = await fetch('https://toolkit.rork.com/stt/transcribe/', {
+                            method: 'POST',
+                            body: formData,
+                          });
+                          
+                          if (response.ok) {
+                            const result = await response.json();
+                            setTestResult(`✓ Audio works! ${info.size} bytes, transcription: ${result.text?.substring(0, 50) || 'empty'}`);
+                          } else {
+                            setTestResult(`✗ Transcription failed: ${response.status}`);
+                          }
+                        } catch (err) {
+                          setTestResult(`✗ Network error: ${err}`);
+                        }
+                        
+                        // Clean up
+                        await FileSystem.deleteAsync(uri);
+                      } else {
+                        setTestResult(`✗ Recording failed: ${info.exists ? 'Empty file' : 'File not found'}`);
+                      }
+                    } else {
+                      setTestResult('✗ No audio URI returned');
+                    }
+                    
+                    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+                  }, 3000);
+                }
+              } catch (error) {
+                setTestResult(`✗ Error: ${error instanceof Error ? error.message : 'Unknown'}`);
+              }
+            }}
+          />
+          
           <SettingRow
             icon={<Mic size={20} color="#FF8C00" />}
             title="High Quality Audio"
