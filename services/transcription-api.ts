@@ -37,5 +37,32 @@ export async function transcribeAudio(
   }
 
   const result: TranscriptionResponse = await response.json();
-  return result;
+  
+  console.log('Transcription API response:', JSON.stringify(result, null, 2));
+  
+  // Handle nested text object structure
+  let transcriptionText = result.text;
+  
+  // Extract text from nested objects if present
+  while (transcriptionText && typeof transcriptionText === 'object' && 'text' in transcriptionText) {
+    console.log('Found nested text object, extracting...');
+    transcriptionText = (transcriptionText as any).text;
+  }
+  
+  // Validate the extracted text
+  if (!transcriptionText || typeof transcriptionText !== 'string' || transcriptionText.trim().length === 0) {
+    console.error('Invalid transcription response:', {
+      hasText: !!result.text,
+      textType: typeof result.text,
+      textValue: result.text,
+      extractedText: transcriptionText,
+      extractedType: typeof transcriptionText
+    });
+    throw new Error('Transcription returned empty or invalid result. Please try recording again with clear speech.');
+  }
+  
+  return {
+    text: transcriptionText.trim(),
+    language: result.language || 'en'
+  };
 }

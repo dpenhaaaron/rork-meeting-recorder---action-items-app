@@ -341,14 +341,15 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   }, [state.currentMeeting, state.duration, saveMeetings, storeAudioBlob]);
 
   const processMeeting = useCallback(async (meetingId: string) => {
-    const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
-    const meeting = currentMeetings.find((m: Meeting) => m.id === meetingId);
-    
-    if (!meeting) {
-      throw new Error('Meeting not found');
-    }
+    try {
+      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+      const meeting = currentMeetings.find((m: Meeting) => m.id === meetingId);
+      
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
 
-    setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Transcribing audio...' });
+      setProcessingProgress({ stage: 'transcribing', progress: 10, message: 'Transcribing audio...' });
     
     let audioFile: File | { uri: string; name: string; type: string };
     
@@ -366,8 +367,30 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       };
     }
 
-    const transcriptionResult = await transcribeAudio(audioFile);
-    const transcript = transcriptionResult.text;
+    let transcriptionResult;    
+    let transcript;
+    
+    try {
+      transcriptionResult = await transcribeAudio(audioFile);
+      transcript = transcriptionResult.text;
+      
+      console.log('Transcription successful:', {
+        textLength: transcript.length,
+        preview: transcript.substring(0, 100)
+      });
+      
+      // Additional validation
+      if (!transcript || typeof transcript !== 'string' || transcript.trim().length === 0) {
+        throw new Error('Transcription returned empty text');
+      }
+    } catch (transcriptionError) {
+      console.error('Transcription error:', transcriptionError);
+      throw new Error(
+        transcriptionError instanceof Error 
+          ? transcriptionError.message 
+          : 'Failed to transcribe audio. Please try recording again.'
+      );
+    }
 
     setProcessingProgress({ stage: 'refining', progress: 50, message: 'Analyzing transcript...' });
     
@@ -378,26 +401,40 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       (progress) => setProcessingProgress(progress)
     );
 
-    const updatedMeetings = currentMeetings.map((m: Meeting) => 
-      m.id === meetingId 
-        ? { 
-            ...m, 
-            artifacts: result.artifacts, 
-            status: 'completed',
-            transcript: {
-              segments: [],
-              speakers: [],
-              confidence: 0.9,
-              fullText: transcript,
+      const updatedMeetings = currentMeetings.map((m: Meeting) => 
+        m.id === meetingId 
+          ? { 
+              ...m, 
+              artifacts: result.artifacts, 
+              status: 'completed',
+              transcript: {
+                segments: [],
+                speakers: [],
+                confidence: 0.9,
+                fullText: transcript,
+              }
             }
-          }
-        : m
-    );
-    
-    await saveMeetings(updatedMeetings);
-    setProcessingProgress(null);
-    
-    return result;
+          : m
+      );
+      
+      await saveMeetings(updatedMeetings);
+      setProcessingProgress(null);
+      
+      return result;
+    } catch (error) {
+      console.error('Meeting processing failed:', error);
+      
+      // Update meeting status to error
+      const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
+      const updatedMeetings = currentMeetings.map((m: Meeting) => 
+        m.id === meetingId ? { ...m, status: 'error' } : m
+      );
+      await saveMeetings(updatedMeetings);
+      setProcessingProgress(null);
+      
+      // Re-throw with user-friendly message
+      throw error;
+    }
   }, [saveMeetings, getAudioBlob]);
 
   const deleteMeeting = useCallback(async (meetingId: string) => {
