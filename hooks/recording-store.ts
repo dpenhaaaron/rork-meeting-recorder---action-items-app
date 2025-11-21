@@ -390,7 +390,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         recordingRef.current = null;
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       }
-    }
+    }ondataavailable
+    
 
     setState(prev => ({
       ...prev,
