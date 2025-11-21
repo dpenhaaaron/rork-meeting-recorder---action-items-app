@@ -36,21 +36,7 @@ export default function RecordingControls({
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
   
-  const getRemainingTime = (seconds: number): string => {
-    const maxDuration = 10 * 60; // 10 minutes maximum
-    const remaining = maxDuration - seconds;
-    if (remaining <= 0) return '0:00';
-    
-    const minutes = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
-  
-  const isNearLimit = (seconds: number): boolean => {
-    const maxDuration = 10 * 60; // 10 minutes maximum
-    return seconds > maxDuration - 60; // Last 1 minute
-  };
+
 
   const handlePress = (action: () => void) => {
     if (Platform.OS !== 'web') {
@@ -78,13 +64,10 @@ export default function RecordingControls({
     <View style={styles.container}>
       <View style={styles.durationContainer}>
         <View style={[styles.recordingIndicator, isPaused && styles.pausedIndicator]} />
-        <Text style={[styles.duration, isNearLimit(duration) && styles.warningText]}>
+        <Text style={styles.duration}>
           {formatDuration(duration)}
         </Text>
         <Text style={styles.status}>{isPaused ? 'Paused' : 'Recording'}</Text>
-        <Text style={[styles.remainingTime, isNearLimit(duration) && styles.warningText]}>
-          {getRemainingTime(duration)} remaining
-        </Text>
       </View>
 
       <View style={styles.controls}>
