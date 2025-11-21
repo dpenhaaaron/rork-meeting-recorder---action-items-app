@@ -371,7 +371,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     let transcript;
     
     try {
-      transcriptionResult = await transcribeAudio(audioFile);
+      transcriptionResult = await transcribeAudio(audioFile, meeting.language);transcriptionResult = await transcribeAud, meeting.languageio(audioFile);
       transcript = transcriptionResult.text;
       
       console.log('Transcription successful:', {
