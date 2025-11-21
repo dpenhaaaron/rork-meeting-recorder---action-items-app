@@ -28,6 +28,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const meetingIdRef = useRef<string | null>(null);
 
   const storeAudioBlob = useCallback(async (meetingId: string, blob: Blob) => {
     if (Platform.OS !== 'web') return;
@@ -140,6 +141,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     }
 
     const meetingId = Date.now().toString();
+    meetingIdRef.current = meetingId;
+    
     const newMeeting: Meeting = {
       id: meetingId,
       title,
@@ -271,10 +274,16 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const mediaRecorder = mediaRecorderRef.current!;
           
           mediaRecorder.onstop = async () => {
-            const meetingId = state.currentMeeting?.id;
+            const meetingId = meetingIdRef.current;
+            console.log('MediaRecorder stopped. Meeting ID:', meetingId);
+            console.log('Audio chunks collected:', audioChunksRef.current.length);
+            
             if (meetingId && audioChunksRef.current.length > 0) {
               const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+              console.log('Created audio blob:', { size: blob.size, type: blob.type });
+              
               await storeAudioBlob(meetingId, blob);
+              console.log('Audio blob stored in IndexedDB');
               
               const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
               const updatedMeetings = currentMeetings.map((m: Meeting) => 
@@ -283,6 +292,9 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
                   : m
               );
               await saveMeetings(updatedMeetings);
+              console.log('Meeting status updated to processing');
+            } else {
+              console.error('Cannot save audio:', { meetingId, chunksLength: audioChunksRef.current.length });
             }
             
             if (streamRef.current) {
@@ -371,7 +383,7 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
     let transcript;
     
     try {
-      transcriptionResult = await transcribeAudio(audioFile, meeting.language);transcriptionResult = await transcribeAud, meeting.languageio(audioFile);
+      transcriptionResult = await transcribeAudio(audioFile, meeting.language);
       transcript = transcriptionResult.text;
       
       console.log('Transcription successful:', {
