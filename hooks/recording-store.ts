@@ -267,6 +267,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
   }, []);
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
+    const meetingId = meetingIdRef.current;
+    
     if (durationInterval.current) {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
@@ -280,7 +282,6 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           const mediaRecorder = mediaRecorderRef.current!;
           
           mediaRecorder.onstop = async () => {
-            const meetingId = meetingIdRef.current;
             console.log('[Web Recording] MediaRecorder stopped');
             console.log('[Web Recording] Meeting ID:', meetingId);
             console.log('[Web Recording] Audio chunks collected:', audioChunksRef.current.length);
@@ -344,11 +345,11 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
         console.log('[Native Recording] Stopping recording...');
         await recordingRef.current.stopAndUnloadAsync();
         const tempUri = recordingRef.current.getURI();
-        const meetingId = state.currentMeeting?.id ?? Date.now().toString();
         
         console.log('[Native Recording] Temp URI:', tempUri);
+        console.log('[Native Recording] Meeting ID:', meetingId);
         
-        if (tempUri) {
+        if (tempUri && meetingId) {
           try {
             const fileInfo = await FileSystem.getInfoAsync(tempUri);
             console.log('[Native Recording] File info:', {
@@ -384,15 +385,14 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           await saveMeetings(updatedMeetings);
           console.log('[Native Recording] ✓ Meeting status updated');
         } else {
-          console.error('[Native Recording] ✗ ERROR: No URI returned from recording!');
+          console.error('[Native Recording] ✗ ERROR: No URI or meeting ID!', { tempUri, meetingId });
         }
         
         recordingRef.current = null;
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       }
-    }ondataavailable
+    }
     
-
     setState(prev => ({
       ...prev,
       isRecording: false,
@@ -401,8 +401,8 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       currentMeeting: undefined,
     }));
     
-    return state.currentMeeting?.id || null;
-  }, [state.currentMeeting, state.duration, saveMeetings, storeAudioBlob]);
+    return meetingId;
+  }, [state.duration, saveMeetings, storeAudioBlob]);
 
   const processMeeting = useCallback(async (meetingId: string) => {
     try {
