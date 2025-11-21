@@ -161,8 +161,14 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
+        console.log('[Web Recording] Data chunk available:', {
+          chunkSize: event.data.size,
+          totalChunks: audioChunksRef.current.length + 1
+        });
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+        } else {
+          console.warn('[Web Recording] Received empty data chunk');
         }
       };
 
@@ -275,15 +281,29 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
           
           mediaRecorder.onstop = async () => {
             const meetingId = meetingIdRef.current;
-            console.log('MediaRecorder stopped. Meeting ID:', meetingId);
-            console.log('Audio chunks collected:', audioChunksRef.current.length);
+            console.log('[Web Recording] MediaRecorder stopped');
+            console.log('[Web Recording] Meeting ID:', meetingId);
+            console.log('[Web Recording] Audio chunks collected:', audioChunksRef.current.length);
+            console.log('[Web Recording] Chunk sizes:', audioChunksRef.current.map(c => c.size));
             
             if (meetingId && audioChunksRef.current.length > 0) {
               const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-              console.log('Created audio blob:', { size: blob.size, type: blob.type });
+              console.log('[Web Recording] Created audio blob:', { 
+                size: blob.size, 
+                type: blob.type,
+                sizeInMB: (blob.size / (1024 * 1024)).toFixed(2) + ' MB'
+              });
               
-              await storeAudioBlob(meetingId, blob);
-              console.log('Audio blob stored in IndexedDB');
+              if (blob.size === 0) {
+                console.error('[Web Recording] ERROR: Blob is empty despite having chunks!');
+              }
+              
+              try {
+                await storeAudioBlob(meetingId, blob);
+                console.log('[Web Recording] ✓ Audio blob stored successfully in IndexedDB');
+              } catch (error) {
+                console.error('[Web Recording] ✗ Failed to store audio blob:', error);
+              }
               
               const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
               const updatedMeetings = currentMeetings.map((m: Meeting) => 
@@ -313,19 +333,47 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
             resolve(meetingId || null);
           };
           
+          console.log('[Web Recording] Requesting final data before stop...');
+          mediaRecorder.requestData();
+          console.log('[Web Recording] Stopping MediaRecorder...');
           mediaRecorder.stop();
         });
       }
     } else {
       if (recordingRef.current) {
+        console.log('[Native Recording] Stopping recording...');
         await recordingRef.current.stopAndUnloadAsync();
         const tempUri = recordingRef.current.getURI();
         const meetingId = state.currentMeeting?.id ?? Date.now().toString();
         
+        console.log('[Native Recording] Temp URI:', tempUri);
+        
         if (tempUri) {
+          try {
+            const fileInfo = await FileSystem.getInfoAsync(tempUri);
+            console.log('[Native Recording] File info:', {
+              exists: fileInfo.exists,
+              size: fileInfo.exists ? fileInfo.size : 'N/A',
+              sizeInMB: fileInfo.exists && fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A',
+              uri: tempUri
+            });
+            
+            if (!fileInfo.exists) {
+              console.error('[Native Recording] ✗ ERROR: Recording file does not exist!');
+            } else if (fileInfo.size === 0) {
+              console.error('[Native Recording] ✗ ERROR: Recording file is empty (0 bytes)!');
+            } else {
+              console.log('[Native Recording] ✓ Recording file looks valid');
+            }
+          } catch (error) {
+            console.error('[Native Recording] ✗ Error checking file info:', error);
+          }
+          
           const dest = `${RECORDINGS_DIR}${meetingId}.m4a`;
+          console.log('[Native Recording] Moving file to:', dest);
           await FileSystem.moveAsync({ from: tempUri, to: dest });
           audioUri = dest;
+          console.log('[Native Recording] ✓ File moved successfully');
           
           const currentMeetings = JSON.parse(await AsyncStorage.getItem('meetings') || '[]');
           const updatedMeetings = currentMeetings.map((m: Meeting) => 
@@ -334,6 +382,9 @@ export const [RecordingProvider, useRecording] = createContextHook(() => {
               : m
           );
           await saveMeetings(updatedMeetings);
+          console.log('[Native Recording] ✓ Meeting status updated');
+        } else {
+          console.error('[Native Recording] ✗ ERROR: No URI returned from recording!');
         }
         
         recordingRef.current = null;
